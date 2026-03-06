@@ -12,6 +12,7 @@ from pytfe.models import (
     VariableSetCreateOptions,
     VariableSetListOptions,
 )
+import datetime
 
 
 def get_http(config: TFEConfig) -> HTTPTransport:
@@ -98,10 +99,13 @@ def ensure_teams(http: HTTPTransport, org: str, prefix: str) -> dict[str, str]:
 
 def create_team_token(http: HTTPTransport, team_id: str, description: str) -> str:
     """Create a team token with the given description and return the token value."""
+    now = datetime.datetime.now()
+
     payload = {
         "data": {
             "type": "authentication-tokens",
             "attributes": {"description": description},
+            "expires-at": (now + datetime.timedelta(365)).isoformat()
         }
     }
     response = http.request(
@@ -135,20 +139,21 @@ def delete_team_tokens_by_description(
     http: HTTPTransport,
     team_ids: dict[str, str],
     prefix: str,
-    description: str,
 ) -> None:
-    """Delete all tokens for each team whose description matches the given value."""
+    """Delete the active token for each team.
+
+    HCP Terraform supports one token per team — DELETE /api/v2/teams/{id}/authentication-tokens
+    revokes it directly without needing a token ID.
+    """
+    from pytfe.errors import NotFound
+
     for role, team_id in team_ids.items():
         team_name = f"{prefix}-{role}"
-        response = http.request("GET", f"/api/v2/teams/{team_id}/authentication-tokens")
-        tokens = response.json().get("data", [])
-        matched = [t for t in tokens if t["attributes"].get("description") == description]
-        if not matched:
-            print(f"  [skip] No tokens with description '{description}' found for team '{team_name}'")
-            continue
-        for token in matched:
-            http.request("DELETE", f"/api/v2/authentication-tokens/{token['id']}")
-            print(f"  [ok]   Revoked token '{token['id']}' from team '{team_name}'")
+        try:
+            http.request("DELETE", f"/api/v2/teams/{team_id}/authentication-tokens")
+            print(f"  [ok]   Revoked token for team '{team_name}'")
+        except NotFound:
+            print(f"  [skip] No active token found for team '{team_name}'")
 
 
 # ---------------------------------------------------------------------------

@@ -43,7 +43,7 @@ def offboard(prefix: str, org: str, github_repository: str, client: TFEClient, h
 
     print("Step 1: Revoking team tokens...")
     cicd_team_ids = {"cicd": team_ids["cicd"]} if "cicd" in team_ids else {}
-    delete_team_tokens_by_description(http, cicd_team_ids, prefix, description=github_repository)
+    delete_team_tokens_by_description(http, cicd_team_ids, prefix)
 
     print("\nStep 2: Deleting variable sets...")
     delete_varsets(client, org, prefix)
