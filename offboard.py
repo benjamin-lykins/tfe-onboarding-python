@@ -2,17 +2,16 @@
 """
 HCP Terraform Project Offboarding Script
 
-Removes all resources created by onboard.py for a given prefix,
-except for the teams themselves (which are left intact).
+Removes all resources created by onboard.py, except for the teams (left intact).
 
 Resources removed:
-  1. Team tokens matching the github_repository description
-  2. Variable sets ({prefix}-nprod, {prefix}-prod)
+  1. Team token on {team_name}-cicd matching the github_repository description
+  2. Variable sets ({project_name}-nprod, {project_name}-prod)
   3. Team-project access entries
-  4. Projects ({prefix}-nprod, {prefix}-prod)
+  4. Projects ({project_name}-nprod, {project_name}-prod)
 
 Usage:
-  python offboard.py --project-name <name> --github-repository <org/repo>
+  python offboard.py --project-name <name> --team-name <name> --github-repository <org/repo>
 """
 
 import argparse
@@ -24,35 +23,42 @@ from pytfe import TFEClient, TFEConfig
 
 from tfe_helpers import (
     delete_projects,
-    delete_team_tokens_by_description,
+    delete_team_tokens,
     delete_varsets,
     get_http,
     list_teams,
 )
 
 
-def offboard(prefix: str, org: str, github_repository: str, client: TFEClient, http) -> None:
-    print(f"\n=== Offboarding '{prefix}' from HCP Terraform org '{org}' ===\n")
+def offboard(
+    project_name: str,
+    team_name: str,
+    org: str,
+    github_repository: str,
+    client: TFEClient,
+    http,
+) -> None:
+    print(f"\n=== Offboarding '{project_name}' from HCP Terraform org '{org}' ===\n")
 
     existing_teams = list_teams(http, org)
     team_ids = {
-        role: existing_teams[f"{prefix}-{role}"]
+        role: existing_teams[f"{team_name}-{role}"]
         for role in ["reader", "contributor", "cicd"]
-        if f"{prefix}-{role}" in existing_teams
+        if f"{team_name}-{role}" in existing_teams
     }
 
     print("Step 1: Revoking team tokens...")
     cicd_team_ids = {"cicd": team_ids["cicd"]} if "cicd" in team_ids else {}
-    delete_team_tokens_by_description(http, cicd_team_ids, prefix)
+    delete_team_tokens(http, org, cicd_team_ids, team_name, description=github_repository)
 
     print("\nStep 2: Deleting variable sets...")
-    delete_varsets(client, org, prefix)
+    delete_varsets(client, org, project_name)
 
     print("\nStep 3: Deleting projects (and their team access)...")
-    delete_projects(http, client, org, prefix)
+    delete_projects(http, client, org, project_name)
 
     print(f"\n=== Offboarding complete! ===")
-    print(f"    Teams ({prefix}-reader, {prefix}-contributor, {prefix}-cicd) were left intact.\n")
+    print(f"    Teams ({team_name}-reader, {team_name}-contributor, {team_name}-cicd) were left intact.\n")
 
 
 if __name__ == "__main__":
@@ -64,12 +70,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--project-name",
         required=True,
-        help="Project name prefix used during onboarding (e.g. 'myapp')",
+        help="Project name used during onboarding (e.g. 'myapp'). Projects named '{name}-nprod' and '{name}-prod' will be removed.",
+    )
+    parser.add_argument(
+        "--team-name",
+        required=True,
+        help="Team name used during onboarding (e.g. 'myapp'). Used to look up teams and revoke the cicd token.",
     )
     parser.add_argument(
         "--github-repository",
         required=True,
-        help="GitHub repository used during onboarding (e.g. 'my-org/my-repo'). Used to identify which team tokens to revoke.",
+        help="GitHub repository used during onboarding (e.g. 'my-org/my-repo'). Used to identify which cicd team token to revoke.",
     )
     parser.add_argument(
         "--yes",
@@ -84,8 +95,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if not args.yes:
-        print(f"\nThis will delete the following resources for prefix '{args.project_name}' in org '{org}':")
-        print(f"  Team tokens   : tokens with description '{args.github_repository}' on team '{args.project_name}-cicd'")
+        print(f"\nThis will delete the following resources in org '{org}':")
+        print(f"  Team tokens   : token with description '{args.github_repository}' on team '{args.team_name}-cicd'")
         print(f"  Variable sets : {args.project_name}-nprod, {args.project_name}-prod")
         print(f"  Projects      : {args.project_name}-nprod, {args.project_name}-prod")
         print(f"  Team access   : all entries for the above projects")
@@ -101,7 +112,8 @@ if __name__ == "__main__":
     http_transport = get_http(config)
 
     offboard(
-        prefix=args.project_name,
+        project_name=args.project_name,
+        team_name=args.team_name,
         org=org,
         github_repository=args.github_repository,
         client=tfe_client,

@@ -4,15 +4,20 @@ Shared helpers for HCP Terraform onboarding scripts.
 
 from pytfe import TFEClient, TFEConfig
 from pytfe._http import HTTPTransport
+import datetime
+
 from pytfe.models import (
     Project,
     ProjectCreateOptions,
     ProjectListOptions,
+    PolicySetAddProjectsOptions,
+    PolicySetListOptions,
+    PolicySetRemoveProjectsOptions,
     VariableSetApplyToProjectsOptions,
     VariableSetCreateOptions,
     VariableSetListOptions,
 )
-import datetime
+
 
 
 def get_http(config: TFEConfig) -> HTTPTransport:
@@ -97,63 +102,82 @@ def ensure_teams(http: HTTPTransport, org: str, prefix: str) -> dict[str, str]:
 # Team Tokens
 # ---------------------------------------------------------------------------
 
-def create_team_token(http: HTTPTransport, team_id: str, description: str) -> str:
-    """Create a team token with the given description and return the token value."""
-    now = datetime.datetime.now()
+def _get_org_team_tokens(http: HTTPTransport, org: str) -> list[dict]:
+    """Return all team tokens for the org from the list endpoint."""
+    response = http.request("GET", f"/api/v2/organizations/{org}/team-tokens")
+    return response.json().get("data", [])
 
-    payload = {
-        "data": {
-            "type": "authentication-tokens",
-            "attributes": {"description": description},
-            "expires-at": (now + datetime.timedelta(365)).isoformat()
-        }
-    }
-    response = http.request(
-        "POST",
-        f"/api/v2/teams/{team_id}/authentication-tokens",
-        json_body=payload,
-    )
-    return response.json()["data"]["attributes"]["token"]
+
+def _find_token_for_team(org_tokens: list[dict], team_id: str, description: str) -> dict | None:
+    """Return the token entry matching both team_id and description, or None."""
+    for token in org_tokens:
+        rel_team = token.get("relationships", {}).get("team", {}).get("data", {})
+        if rel_team.get("id") == team_id and token.get("attributes", {}).get("description") == description:
+            return token
+    return None
 
 
 def create_team_tokens(
     http: HTTPTransport,
+    org: str,
     team_ids: dict[str, str],
     prefix: str,
     description: str,
 ) -> dict[str, str]:
     """
-    Create a token for each team. Returns {role: token_value}.
-    Token values are only available at creation time.
+    Create a token for each team if one does not already exist.
+    Returns {role: token_value} — only includes newly created tokens since
+    existing token values are not returned by the API.
     """
+    org_tokens = _get_org_team_tokens(http, org)
     tokens: dict[str, str] = {}
+
     for role, team_id in team_ids.items():
         team_name = f"{prefix}-{role}"
-        token_value = create_team_token(http, team_id, description)
+        existing = _find_token_for_team(org_tokens, team_id, description)
+        if existing:
+            print(f"  [skip] Token with description '{description}' already exists for team '{team_name}' (id={existing['id']})")
+            continue
+        expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat()
+        payload = {
+            "data": {
+                "type": "authentication-tokens",
+                "attributes": {
+                    "description": description,
+                    "expired-at": expires_at,
+                },
+            }
+        }
+        response = http.request(
+            "POST",
+            f"/api/v2/teams/{team_id}/authentication-tokens",
+            json_body=payload,
+        )
+        token_value = response.json()["data"]["attributes"]["token"]
         tokens[role] = token_value
         print(f"  [ok]   Created token for team '{team_name}' (description: {description})")
+
     return tokens
 
 
-def delete_team_tokens_by_description(
+def delete_team_tokens(
     http: HTTPTransport,
+    org: str,
     team_ids: dict[str, str],
     prefix: str,
+    description: str,
 ) -> None:
-    """Delete the active token for each team.
-
-    HCP Terraform supports one token per team — DELETE /api/v2/teams/{id}/authentication-tokens
-    revokes it directly without needing a token ID.
-    """
-    from pytfe.errors import NotFound
+    """Delete the token matching description for each team using the token ID from the list endpoint."""
+    org_tokens = _get_org_team_tokens(http, org)
 
     for role, team_id in team_ids.items():
         team_name = f"{prefix}-{role}"
-        try:
-            http.request("DELETE", f"/api/v2/teams/{team_id}/authentication-tokens")
-            print(f"  [ok]   Revoked token for team '{team_name}'")
-        except NotFound:
-            print(f"  [skip] No active token found for team '{team_name}'")
+        existing = _find_token_for_team(org_tokens, team_id, description)
+        if not existing:
+            print(f"  [skip] No token with description '{description}' found for team '{team_name}'")
+            continue
+        http.request("DELETE", f"/api/v2/authentication-tokens/{existing['id']}")
+        print(f"  [ok]   Revoked token with description '{description}' for team '{team_name}'")
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +252,8 @@ def assign_team_access(
     http: HTTPTransport,
     team_ids: dict[str, str],
     project_ids: dict[str, str],
-    prefix: str,
+    project_prefix: str,
+    team_prefix: str,
 ) -> None:
     """
     Add teams to both projects with the required access levels:
@@ -243,12 +268,12 @@ def assign_team_access(
     }
 
     for env, project_id in project_ids.items():
-        project_name = f"{prefix}-{env}"
+        project_name = f"{project_prefix}-{env}"
         existing_team_ids = get_existing_team_project_access(http, project_id)
 
         for role, access in access_map.items():
             team_id = team_ids[role]
-            team_name = f"{prefix}-{role}"
+            team_name = f"{team_prefix}-{role}"
             if team_id in existing_team_ids:
                 print(f"  [skip] Team '{team_name}' already has access to project '{project_name}'")
             else:
@@ -341,3 +366,51 @@ def delete_varsets(client: TFEClient, org: str, prefix: str) -> None:
             continue
         client.variable_sets.delete(existing[varset_name])
         print(f"  [ok]   Deleted variable set '{varset_name}'")
+
+
+# ---------------------------------------------------------------------------
+# Policy Sets
+# ---------------------------------------------------------------------------
+
+def _resolve_policy_set_ids(client: TFEClient, org: str, names: list[str]) -> dict[str, str]:
+    """Return {name: policy_set_id} for the given names, warning on any not found."""
+    all_policy_sets = {ps.name: ps.id for ps in client.policy_sets.list(org, PolicySetListOptions())}
+    resolved: dict[str, str] = {}
+    for name in names:
+        if name in all_policy_sets:
+            resolved[name] = all_policy_sets[name]
+        else:
+            print(f"  [warn] Policy set '{name}' not found in org — skipping")
+    return resolved
+
+
+def assign_policy_sets(
+    client: TFEClient,
+    org: str,
+    project_ids: dict[str, str],
+    policy_set_names: list[str],
+) -> None:
+    """Attach each project to every policy set in policy_set_names."""
+    policy_sets = _resolve_policy_set_ids(client, org, policy_set_names)
+    projects = [Project(id=pid) for pid in project_ids.values()]
+
+    for ps_name, ps_id in policy_sets.items():
+        client.policy_sets.add_projects(ps_id, PolicySetAddProjectsOptions(projects=projects))
+        project_names = ", ".join(f"'{k}'" for k in project_ids)
+        print(f"  [ok]   Attached policy set '{ps_name}' to projects {project_names}")
+
+
+def remove_policy_sets(
+    client: TFEClient,
+    org: str,
+    project_ids: dict[str, str],
+    policy_set_names: list[str],
+) -> None:
+    """Detach each project from every policy set in policy_set_names."""
+    policy_sets = _resolve_policy_set_ids(client, org, policy_set_names)
+    projects = [Project(id=pid) for pid in project_ids.values()]
+
+    for ps_name, ps_id in policy_sets.items():
+        client.policy_sets.remove_projects(ps_id, PolicySetRemoveProjectsOptions(projects=projects))
+        project_names = ", ".join(f"'{k}'" for k in project_ids)
+        print(f"  [ok]   Detached policy set '{ps_name}' from projects {project_names}")
