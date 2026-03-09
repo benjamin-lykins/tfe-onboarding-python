@@ -48,7 +48,7 @@ def onboard(
     org: str,
     github_repository: str,
     policy_sets: list[str],
-    agent_pools: list[str], 
+    # agent_pools: list[str], 
     client: TFEClient,
     http,
 ) -> None:

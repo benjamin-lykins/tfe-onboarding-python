@@ -374,7 +374,7 @@ def delete_varsets(client: TFEClient, org: str, prefix: str) -> None:
 
 def _resolve_policy_set_ids(client: TFEClient, org: str, names: list[str]) -> dict[str, str]:
     """Return {name: policy_set_id} for the given names, warning on any not found."""
-    all_policy_sets = {ps.name: ps.id for ps in client.policy_sets.list(org, PolicySetListOptions())}
+    all_policy_sets = {ps.name: ps.id for ps in client.policy_sets.list(org, PolicySetListOptions()).items}
     resolved: dict[str, str] = {}
     for name in names:
         if name in all_policy_sets:
