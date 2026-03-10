@@ -20,6 +20,7 @@ All teams are created with organisation-level read-only access (`read-workspaces
 - Python 3.11+
 - An HCP Terraform organisation
 - An API token with permission to manage teams, projects, variable sets, and policy sets
+- `make` (Windows: install via [Git for Windows](https://gitforwindows.org/), [Chocolatey](https://chocolatey.org/) `choco install make`, or [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
 
 ## Setup
 
@@ -27,8 +28,16 @@ All teams are created with organisation-level read-only access (`read-workspaces
 
 ```bash
 make install
-source .venv/bin/activate
 ```
+
+Activate the virtual environment:
+
+| Platform | Shell | Command |
+|---|---|---|
+| macOS / Linux | bash/zsh | `source .venv/bin/activate` |
+| Windows | PowerShell | `.venv\Scripts\Activate.ps1` |
+| Windows | CMD | `.venv\Scripts\activate.bat` |
+| Windows | Git Bash | `source .venv/Scripts/activate` |
 
 **2. Configure environment**
 

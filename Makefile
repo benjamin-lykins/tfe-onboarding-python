@@ -1,11 +1,20 @@
 .PHONY: requirements install
 
 VENV := .venv
-PIP  := $(VENV)/bin/pip
-PIP_COMPILE := $(VENV)/bin/pip-compile
+
+ifeq ($(OS),Windows_NT)
+    VENV_BIN := $(VENV)/Scripts
+    PYTHON   := python
+else
+    VENV_BIN := $(VENV)/bin
+    PYTHON   := python3
+endif
+
+PIP         := $(VENV_BIN)/pip
+PIP_COMPILE := $(VENV_BIN)/pip-compile
 
 $(VENV):
-	python3 -m venv $(VENV)
+	$(PYTHON) -m venv $(VENV)
 
 $(PIP_COMPILE): $(VENV)
 	$(PIP) install pip-tools --quiet
