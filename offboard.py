@@ -47,7 +47,7 @@ def offboard(
     client: TFEClient,
     http,
 ) -> None:
-    print(f"\n=== Offboarding '{project_name}' from HCP Terraform org '{org}' ===\n")
+    print(f"\n=== Offboarding '{project_name}' from HCP Terraform org ===\n")
 
     existing_teams = list_teams(http, org)
     team_ids = {

@@ -52,7 +52,7 @@ def onboard(
     client: TFEClient,
     http,
 ) -> None:
-    print(f"\n=== Onboarding '{project_name}' into HCP Terraform org '{org}' ===\n")
+    print(f"\n=== Onboarding '{project_name}' into HCP Terraform org ===\n")
 
     print("Step 1: Ensuring teams exist...")
     team_ids = ensure_teams(http, org, team_name)
