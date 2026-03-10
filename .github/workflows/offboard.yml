@@ -1,0 +1,51 @@
+name: Offboard Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: "Project name prefix used during onboarding"
+        required: true
+      team_name:
+        description: "Team name prefix used during onboarding"
+        required: true
+      github_repository:
+        description: "GitHub repository used during onboarding — identifies the cicd token to revoke"
+        required: true
+      policy_sets:
+        description: "Comma-separated policy set names to detach (leave blank for defaults)"
+        required: false
+        default: ""
+
+jobs:
+  offboard:
+    name: Offboard ${{ inputs.project_name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run offboarding script
+        env:
+          TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
+          TFE_ORGANIZATION: ${{ secrets.TFE_ORGANIZATION }}
+          TFE_HOSTNAME: ${{ secrets.TFE_HOSTNAME }}
+        run: |
+          ARGS="--project-name ${{ inputs.project_name }} \
+                --team-name ${{ inputs.team_name }} \
+                --github-repository ${{ inputs.github_repository }} \
+                --yes"
+
+          if [ -n "${{ inputs.policy_sets }}" ]; then
+            ARGS="$ARGS --policy-sets '${{ inputs.policy_sets }}'"
+          fi
+
+          python offboard.py $ARGS

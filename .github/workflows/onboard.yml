@@ -1,0 +1,50 @@
+name: Onboard Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: "Project name prefix (creates {name}-nprod and {name}-prod)"
+        required: true
+      team_name:
+        description: "Team name prefix (creates {name}-reader, {name}-contributor, {name}-cicd)"
+        required: true
+      github_repository:
+        description: "GitHub repository (e.g. my-org/my-repo) — used as the cicd token description"
+        required: true
+      policy_sets:
+        description: "Comma-separated policy set names to attach (leave blank for defaults)"
+        required: false
+        default: ""
+
+jobs:
+  onboard:
+    name: Onboard ${{ inputs.project_name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run onboarding script
+        env:
+          TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
+          TFE_ORGANIZATION: ${{ secrets.TFE_ORGANIZATION }}
+          TFE_HOSTNAME: ${{ secrets.TFE_HOSTNAME }}
+        run: |
+          ARGS="--project-name ${{ inputs.project_name }} \
+                --team-name ${{ inputs.team_name }} \
+                --github-repository ${{ inputs.github_repository }}"
+
+          if [ -n "${{ inputs.policy_sets }}" ]; then
+            ARGS="$ARGS --policy-sets '${{ inputs.policy_sets }}'"
+          fi
+
+          python onboard.py $ARGS

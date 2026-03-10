@@ -164,11 +164,38 @@ python offboard.py --project-name myapp --team-name platform \
 ├── examples/
 │   ├── demo.sh         # Interactive demo shell script
 │   └── cleanup.py      # Full teardown including teams
+├── .github/
+│   └── workflows/
+│       ├── onboard.yml     # GitHub Actions workflow for onboarding
+│       └── offboard.yml    # GitHub Actions workflow for offboarding
 ├── .env.example        # Environment variable template
 ├── requirements.in     # Direct dependencies
 ├── requirements.txt    # Pinned lockfile (auto-generated)
 └── Makefile            # Developer tasks
 ```
+
+## GitHub Actions
+
+Both workflows are triggered manually via **Actions → Run workflow** in the GitHub UI.
+
+**Required repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|---|---|
+| `TFE_TOKEN` | HCP Terraform API token |
+| `TFE_ORGANIZATION` | HCP Terraform organisation name |
+| `TFE_HOSTNAME` | Optional — defaults to `app.terraform.io` |
+
+**Workflow inputs:**
+
+| Input | Onboard | Offboard | Description |
+|---|---|---|---|
+| `project_name` | required | required | Project name prefix |
+| `team_name` | required | required | Team name prefix |
+| `github_repository` | required | required | GitHub repo (e.g. `my-org/my-repo`) |
+| `policy_sets` | optional | optional | Comma-separated policy set names (blank = defaults) |
+
+The offboarding workflow passes `--yes` automatically to skip the interactive confirmation prompt.
 
 ## Makefile targets
 
