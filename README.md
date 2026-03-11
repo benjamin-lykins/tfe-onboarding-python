@@ -32,6 +32,7 @@ Each team is granted project-level access with the following custom permissions:
 - An HCP Terraform organisation
 - An API token with permission to manage teams, projects, variable sets, and policy sets
 - `make` (Windows: install via [Git for Windows](https://gitforwindows.org/), [Chocolatey](https://chocolatey.org/) `choco install make`, or [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
+- GitHub Actions token with access to the target repository's secrets (required to write/delete `TFE_TOKEN` during onboarding/offboarding)
 
 ## Setup
 
