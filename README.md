@@ -158,11 +158,12 @@ python offboard.py --project-name <name> --team-name <name> --github-repository 
 | `--yes` | No | Skip the confirmation prompt |
 
 Offboarding tears down resources in this order:
-1. Revoke `{team_name}-cicd` token matching the GitHub repository description
-2. Delete the `TFE_TOKEN` Actions secret from the GitHub repository
-3. Detach projects from policy sets
-4. Delete variable sets
-5. Remove team-project access entries and delete projects
+1. Check that both projects have no workspaces (aborts if any exist)
+2. Revoke `{team_name}-cicd` token matching the GitHub repository description
+3. Delete the `TFE_TOKEN` Actions secret from the GitHub repository
+4. Detach projects from policy sets
+5. Delete variable sets
+6. Remove team-project access entries and delete projects
 
 ```bash
 python offboard.py --project-name myapp --team-name platform \

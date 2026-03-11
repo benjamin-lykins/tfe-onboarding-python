@@ -4,12 +4,13 @@ HCP Terraform Project Offboarding Script
 
 Removes all resources created by onboard.py, except for the teams (left intact).
 
-Resources removed:
-  1. Team token on {team_name}-cicd matching the github_repository description
+Steps:
+  1. Check projects have no workspaces (aborts if any exist)
+  2. Team token on {team_name}-cicd matching the github_repository description
      and the TFE_TOKEN Actions secret on the target GitHub repository
-  2. Projects removed from policy sets
-  3. Variable sets ({project_name}-nprod, {project_name}-prod)
-  4. Team-project access entries and projects ({project_name}-nprod, {project_name}-prod)
+  3. Projects removed from policy sets
+  4. Variable sets ({project_name}-nprod, {project_name}-prod)
+  5. Team-project access entries and projects ({project_name}-nprod, {project_name}-prod)
 
 Environment variables:
   TFE_TOKEN         HCP Terraform API token (required)
@@ -35,6 +36,7 @@ from tfe_helpers import (
     delete_team_tokens,
     delete_varsets,
     get_http,
+    list_project_workspaces,
     list_projects,
     list_teams,
     remove_policy_sets,
@@ -57,6 +59,29 @@ def offboard(
 ) -> None:
     print(f"\n=== Offboarding '{project_name}' from HCP Terraform org ===\n")
 
+    print("Step 1: Checking for existing workspaces...")
+    existing_projects = list_projects(client, org)
+    project_ids = {
+        env: existing_projects[f"{project_name}-{env}"]
+        for env in ["nprod", "prod"]
+        if f"{project_name}-{env}" in existing_projects
+    }
+
+    projects_with_workspaces: dict[str, list[str]] = {}
+    for env, pid in project_ids.items():
+        workspaces = list_project_workspaces(http, org, pid)
+        if workspaces:
+            projects_with_workspaces[f"{project_name}-{env}"] = workspaces
+
+    if projects_with_workspaces:
+        print("  [error] The following projects still have workspaces — remove them before offboarding:")
+        for proj, ws_names in projects_with_workspaces.items():
+            for name in ws_names:
+                print(f"    {proj}: {name}")
+        sys.exit(1)
+
+    print("  [ok]   No workspaces found — safe to proceed")
+
     existing_teams = list_teams(http, org)
     team_ids = {
         role: existing_teams[f"{team_name}-{role}"]
@@ -64,7 +89,7 @@ def offboard(
         if f"{team_name}-{role}" in existing_teams
     }
 
-    print("Step 1: Revoking team tokens and deleting GitHub secrets...")
+    print("\nStep 2: Revoking team tokens and deleting GitHub secrets...")
     cicd_team_ids = {"cicd": team_ids["cicd"]} if "cicd" in team_ids else {}
     delete_team_tokens(http, org, cicd_team_ids, team_name, description=github_repository)
 
@@ -75,22 +100,16 @@ def offboard(
         delete_repo_secret(github_token, owner, repo_name, "TFE_TOKEN")
         print(f"  [ok]   Deleted secret 'TFE_TOKEN' from {github_repository}")
 
-    print("\nStep 2: Removing projects from policy sets...")
-    existing_projects = list_projects(client, org)
-    project_ids = {
-        env: existing_projects[f"{project_name}-{env}"]
-        for env in ["nprod", "prod"]
-        if f"{project_name}-{env}" in existing_projects
-    }
+    print("\nStep 3: Removing projects from policy sets...")
     if project_ids:
         remove_policy_sets(client, org, project_ids, policy_sets)
     else:
         print("  [skip] No projects found to remove from policy sets")
 
-    print("\nStep 3: Deleting variable sets...")
+    print("\nStep 4: Deleting variable sets...")
     delete_varsets(client, org, project_name)
 
-    print("\nStep 4: Deleting projects (and their team access)...")
+    print("\nStep 5: Deleting projects (and their team access)...")
     delete_projects(http, client, org, project_name)
 
     print(f"\n=== Offboarding complete! ===")

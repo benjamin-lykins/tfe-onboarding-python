@@ -192,6 +192,16 @@ def list_projects(client: TFEClient, org: str) -> dict[str, str]:
     return {p.name: p.id for p in projects}
 
 
+def list_project_workspaces(http: HTTPTransport, org: str, project_id: str) -> list[str]:
+    """Return a list of workspace names belonging to the given project."""
+    response = http.request(
+        "GET",
+        f"/api/v2/organizations/{org}/workspaces",
+        params={"filter[project][id]": project_id},
+    )
+    return [ws["attributes"]["name"] for ws in response.json().get("data", [])]
+
+
 def ensure_projects(
     http: HTTPTransport,
     client: TFEClient,
