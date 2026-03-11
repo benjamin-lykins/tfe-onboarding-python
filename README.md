@@ -10,11 +10,21 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 | Team token | `{team_name}-cicd` (expires in 1 year, description = GitHub repository) |
 | GitHub secret | `TFE_TOKEN` written to the target GitHub repository |
 | Projects | `{project_name}-nprod`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
-| Team access (per project) | reader → `read`, contributor → `write`, cicd → `write` |
+| Team access (per project) | see [Team access](#team-access) below |
 | Variable sets | `{project_name}-nprod`, `{project_name}-prod` (assigned to their project) |
 | Policy sets | Projects attached to each policy set in `--policy-sets` |
 
 All teams are created with organisation-level read-only access (`read-workspaces`, `read-projects`). The script is fully idempotent — re-running it skips resources that already exist.
+
+### Team access
+
+Each team is granted project-level access with the following custom permissions:
+
+| Team | Access type | Permissions |
+|---|---|---|
+| `{team_name}-reader` | `read` | Read-only access to the project |
+| `{team_name}-contributor` | `custom` | Runs: `plan` only. No workspace, variable, or state access. |
+| `{team_name}-cicd` | `custom` | Create workspaces: ✓ · Runs: `apply` · Variables: `read/write` · State versions: `read-outputs` |
 
 ## Prerequisites
 
@@ -100,7 +110,8 @@ Step 3: Ensuring projects exist...
 
 Step 4: Assigning team access to projects...
   [ok]   Granted 'read' access to team 'platform-reader' on project 'myapp-nprod'
-  [ok]   Granted 'write' access to team 'platform-contributor' on project 'myapp-nprod'
+  [ok]   Granted 'custom' access to team 'platform-contributor' on project 'myapp-nprod'
+  [ok]   Granted 'custom' access to team 'platform-cicd' on project 'myapp-nprod'
   ...
 
 Step 5: Creating and assigning variable sets...

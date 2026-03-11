@@ -271,13 +271,13 @@ def grant_team_project_access(
     http: HTTPTransport,
     team_id: str,
     project_id: str,
-    access: str,
+    attributes: dict,
 ) -> None:
     """Grant a team access to a project via the team-projects API."""
     payload = {
         "data": {
             "type": "team-projects",
-            "attributes": {"access": access},
+            "attributes": attributes,
             "relationships": {
                 "team": {"data": {"id": team_id, "type": "teams"}},
                 "project": {"data": {"id": project_id, "type": "projects"}},
@@ -285,6 +285,47 @@ def grant_team_project_access(
         }
     }
     http.request("POST", "/api/v2/team-projects", json_body=payload)
+
+
+# Access configurations per role:
+#   reader      - read-only access to the project
+#   contributor - custom: plan-only runs, no other permissions
+#   cicd        - custom: create workspaces, apply runs, read/write variables
+_ROLE_ACCESS: dict[str, dict] = {
+    "reader": {
+        "access": "read",
+    },
+    "contributor": {
+        "access": "custom",
+        "project-access": {"settings": "read", "teams": "none"},
+        "workspace-access": {
+            "runs": "plan",
+            "sentinel-mocks": "none",
+            "state-versions": "none",
+            "variables": "none",
+            "create": False,
+            "locking": False,
+            "delete": False,
+            "move": False,
+            "run-tasks": False,
+        },
+    },
+    "cicd": {
+        "access": "custom",
+        "project-access": {"settings": "read", "teams": "none"},
+        "workspace-access": {
+            "runs": "apply",
+            "sentinel-mocks": "none",
+            "state-versions": "read-outputs",
+            "variables": "write",
+            "create": True,
+            "locking": False,
+            "delete": False,
+            "move": False,
+            "run-tasks": False,
+        },
+    },
+}
 
 
 def assign_team_access(
@@ -295,30 +336,24 @@ def assign_team_access(
     team_prefix: str,
 ) -> None:
     """
-    Add teams to both projects with the required access levels:
+    Add teams to both projects with role-specific access:
       reader      -> read
-      contributor -> write
-      cicd        -> write
+      contributor -> custom: plan-only runs
+      cicd        -> custom: create workspaces, apply runs, read/write variables
     """
-    access_map = {
-        "reader": "read",
-        "contributor": "write",
-        "cicd": "write",
-    }
-
     for env, project_id in project_ids.items():
         project_name = f"{project_prefix}-{env}"
         existing_team_ids = get_existing_team_project_access(http, project_id)
 
-        for role, access in access_map.items():
+        for role, attributes in _ROLE_ACCESS.items():
             team_id = team_ids[role]
             team_name = f"{team_prefix}-{role}"
             if team_id in existing_team_ids:
                 print(f"  [skip] Team '{team_name}' already has access to project '{project_name}'")
             else:
-                grant_team_project_access(http, team_id, project_id, access)
+                grant_team_project_access(http, team_id, project_id, attributes)
                 print(
-                    f"  [ok]   Granted '{access}' access to team '{team_name}'"
+                    f"  [ok]   Granted '{attributes['access']}' access to team '{team_name}'"
                     f" on project '{project_name}'"
                 )
 

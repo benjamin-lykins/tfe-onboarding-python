@@ -8,7 +8,7 @@ Given a project name and team name, this script will:
      as the Actions secret TFE_TOKEN on the target GitHub repository
   3. Create two projects: {project_name}-nprod, {project_name}-prod
      (with default execution mode set to 'agent' using the specified agent pool)
-  4. Grant each team access to both projects (reader=read, contributor=write, cicd=write)
+  4. Grant each team access to both projects (reader=read, contributor=custom/plan-only, cicd=custom/create+apply+variables)
   5. Create a variable set for each project and assign it
   6. Attach each project to the specified policy sets
 
