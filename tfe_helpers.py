@@ -4,7 +4,10 @@ Shared helpers for HCP Terraform onboarding scripts.
 
 from pytfe import TFEClient, TFEConfig
 from pytfe._http import HTTPTransport
+import base64
 import datetime
+
+import httpx
 
 from pytfe.models import (
     Project,
@@ -414,3 +417,151 @@ def remove_policy_sets(
         client.policy_sets.remove_projects(ps_id, PolicySetRemoveProjectsOptions(projects=projects))
         project_names = ", ".join(f"'{k}'" for k in project_ids)
         print(f"  [ok]   Detached policy set '{ps_name}' from projects {project_names}")
+
+# ---------------------------------------------------------------------------
+# Agent Pools
+# ---------------------------------------------------------------------------
+
+def list_agent_pools(http: HTTPTransport, org: str) -> dict[str, str]:
+    """Return {pool_name: pool_id} for all agent pools in the org."""
+    response = http.request("GET", f"/api/v2/organizations/{org}/agent-pools")
+    data = response.json().get("data", [])
+    return {p["attributes"]["name"]: p["id"] for p in data}
+
+
+def _resolve_agent_pool_id(http: HTTPTransport, org: str, name: str) -> str | None:
+    """Return the pool_id for the given name, or None with a warning if not found."""
+    all_pools = list_agent_pools(http, org)
+    if name in all_pools:
+        return all_pools[name]
+    print(f"  [warn] Agent pool '{name}' not found in org — skipping")
+    return None
+
+
+def _get_agent_pool_allowed_project_ids(http: HTTPTransport, pool_id: str) -> set[str]:
+    """Return the set of project IDs already in an agent pool's allowed-projects list."""
+    response = http.request("GET", f"/api/v2/agent-pools/{pool_id}")
+    data = response.json().get("data", {})
+    projects = data.get("relationships", {}).get("allowed-projects", {}).get("data", [])
+    return {p["id"] for p in projects}
+
+
+def assign_agent_pool_to_projects(
+    http: HTTPTransport,
+    org: str,
+    project_ids: dict[str, str],
+    agent_pool_name: str,
+    project_prefix: str,
+) -> None:
+    """Grant each project access to the specified agent pool."""
+    pool_id = _resolve_agent_pool_id(http, org, agent_pool_name)
+    if pool_id is None:
+        return
+
+    existing = _get_agent_pool_allowed_project_ids(http, pool_id)
+    to_add = {env: pid for env, pid in project_ids.items() if pid not in existing}
+
+    for env, pid in project_ids.items():
+        if pid in existing:
+            print(f"  [skip] Project '{project_prefix}-{env}' already has access to agent pool '{agent_pool_name}'")
+
+    if to_add:
+        http.request(
+            "POST",
+            f"/api/v2/agent-pools/{pool_id}/relationships/allowed-projects",
+            json_body={"data": [{"id": pid, "type": "projects"} for pid in to_add.values()]},
+        )
+        for env in to_add:
+            print(f"  [ok]   Granted project '{project_prefix}-{env}' access to agent pool '{agent_pool_name}'")
+
+
+def remove_agent_pool_from_projects(
+    http: HTTPTransport,
+    org: str,
+    project_ids: dict[str, str],
+    agent_pool_name: str,
+    project_prefix: str,
+) -> None:
+    """Remove each project from the specified agent pool's allowed-projects list."""
+    pool_id = _resolve_agent_pool_id(http, org, agent_pool_name)
+    if pool_id is None:
+        return
+
+    existing = _get_agent_pool_allowed_project_ids(http, pool_id)
+    to_remove = {env: pid for env, pid in project_ids.items() if pid in existing}
+
+    if not to_remove:
+        project_names = ", ".join(f"'{project_prefix}-{env}'" for env in project_ids)
+        print(f"  [skip] No projects ({project_names}) found in agent pool '{agent_pool_name}'")
+        return
+
+    http.request(
+        "DELETE",
+        f"/api/v2/agent-pools/{pool_id}/relationships/allowed-projects",
+        json_body={"data": [{"id": pid, "type": "projects"} for pid in to_remove.values()]},
+    )
+    for env in to_remove:
+        print(f"  [ok]   Removed project '{project_prefix}-{env}' from agent pool '{agent_pool_name}'")
+
+
+# ---------------------------------------------------------------------------
+# GitHub Secrets
+# ---------------------------------------------------------------------------
+
+def _github_request(method: str, path: str, token: str, **kwargs) -> httpx.Response:
+    """Make a GitHub API request and raise on HTTP errors."""
+    response = httpx.request(
+        method,
+        f"https://api.github.com{path}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        **kwargs,
+    )
+    response.raise_for_status()
+    return response
+
+
+def _encrypt_secret(public_key_b64: str, secret_value: str) -> str:
+    """Encrypt a secret value with the repository's NaCl public key."""
+    from nacl import encoding, public as nacl_public
+    pk = nacl_public.PublicKey(public_key_b64.encode("utf-8"), encoding.Base64Encoder())
+    box = nacl_public.SealedBox(pk)
+    encrypted = box.encrypt(secret_value.encode("utf-8"))
+    return base64.b64encode(encrypted).decode("utf-8")
+
+
+def set_repo_secret(github_token: str, owner: str, repo: str, secret_name: str, secret_value: str) -> None:
+    """Create or update a GitHub Actions secret on the target repository."""
+    try:
+        key_resp = _github_request("GET", f"/repos/{owner}/{repo}/actions/secrets/public-key", github_token)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise RuntimeError(
+                f"Could not access '{owner}/{repo}' via the GitHub API (404). "
+                "Check that: (1) the repository exists, (2) the token has 'repo' scope, "
+                "and (3) GitHub Actions is enabled on the repository "
+                "(Settings → Actions → General → Allow all actions)."
+            ) from None
+        raise
+    key_data = key_resp.json()
+    encrypted_value = _encrypt_secret(key_data["key"], secret_value)
+    _github_request(
+        "PUT",
+        f"/repos/{owner}/{repo}/actions/secrets/{secret_name}",
+        github_token,
+        json={"encrypted_value": encrypted_value, "key_id": key_data["key_id"]},
+    )
+
+
+def delete_repo_secret(github_token: str, owner: str, repo: str, secret_name: str) -> None:
+    """Delete a GitHub Actions secret from the target repository (no-op if not found)."""
+    try:
+        _github_request("DELETE", f"/repos/{owner}/{repo}/actions/secrets/{secret_name}", github_token)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return
+        raise
+

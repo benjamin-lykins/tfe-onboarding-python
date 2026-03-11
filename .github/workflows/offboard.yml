@@ -38,6 +38,7 @@ jobs:
           TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
           TFE_ORGANIZATION: ${{ secrets.TFE_ORGANIZATION }}
           TFE_HOSTNAME: ${{ secrets.TFE_HOSTNAME }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           ARGS="--project-name ${{ inputs.project_name }} \
                 --team-name ${{ inputs.team_name }} \

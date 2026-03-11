@@ -8,10 +8,12 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 |---|---|
 | Teams | `{team_name}-reader`, `{team_name}-contributor`, `{team_name}-cicd` |
 | Team token | `{team_name}-cicd` (expires in 1 year, description = GitHub repository) |
+| GitHub secret | `TFE_TOKEN` written to the target GitHub repository |
 | Projects | `{project_name}-nprod`, `{project_name}-prod` |
 | Team access (per project) | reader → `read`, contributor → `write`, cicd → `write` |
 | Variable sets | `{project_name}-nprod`, `{project_name}-prod` (assigned to their project) |
 | Policy sets | Projects attached to each policy set in `--policy-sets` |
+| Agent pools | Projects granted access to each agent pool in `--agent-pools` |
 
 All teams are created with organisation-level read-only access (`read-workspaces`, `read-projects`). The script is fully idempotent — re-running it skips resources that already exist.
 
@@ -51,6 +53,13 @@ TFE_ORGANIZATION=your-org-name
 
 # Optional — defaults to app.terraform.io
 # TFE_HOSTNAME=app.terraform.io
+
+# GitHub PAT or fine-grained token with "Secrets: Read and write" on the target repo.
+# Required to write/delete TFE_CICD_TOKEN on the GitHub repository during onboarding/offboarding.
+# Fine-grained token (recommended): Settings → Developer settings → Personal access tokens → Fine-grained tokens
+#   Permissions: Secrets → Read and write
+# Classic token: requires the repo scope
+GITHUB_TOKEN=your-github-pat-here
 ```
 
 ## Onboarding
@@ -65,6 +74,8 @@ python onboard.py --project-name <name> --team-name <name> --github-repository <
 | `--team-name` | Yes | Prefix for teams (`{name}-reader`, `{name}-contributor`, `{name}-cicd`) |
 | `--github-repository` | Yes | GitHub repo (e.g. `my-org/my-repo`). Used as the cicd team token description |
 | `--policy-sets` | No | Comma-separated policy set names to attach. Defaults to `DEFAULT_POLICY_SETS` in `onboard.py` |
+| `--agent-pools` | No | Comma-separated agent pool names to grant the projects access to. Defaults to `DEFAULT_AGENT_POOLS` in `onboard.py` |
+| `--skip-token-creation` | No | Skip creating the cicd team token and writing `TFE_TOKEN` to the GitHub repository |
 
 **Example**
 
@@ -78,11 +89,11 @@ Step 1: Ensuring teams exist...
   [ok]   Created team 'platform-contributor' (id=team-def456)
   [ok]   Created team 'platform-cicd' (id=team-ghi789)
 
-Step 2: Creating team tokens...
+Step 2: Creating cicd team token...
   [ok]   Created token for team 'platform-cicd' (description: my-org/my-repo)
 
-  Store these token values — they will not be shown again:
-    platform-cicd: <token>
+  Writing team tokens as GitHub Actions secrets on my-org/my-repo:
+    [ok]   Set secret 'TFE_TOKEN'
 
 Step 3: Ensuring projects exist...
   [ok]   Created project 'myapp-nprod' (id=prj-abc123)
@@ -102,6 +113,14 @@ Step 6: Attaching policy sets to projects...
   [ok]   Attached policy set 'default-policy' to projects 'nprod', 'prod'
 
 === Onboarding complete! ===
+```
+
+Use `--skip-token-creation` to skip Step 2 entirely — useful when re-running onboarding on an existing project where the token was already created, or when the token and GitHub secret are managed separately:
+
+```bash
+python onboard.py --project-name myapp --team-name platform \
+  --github-repository my-org/my-repo \
+  --skip-token-creation
 ```
 
 ### Default policy sets
@@ -137,13 +156,16 @@ python offboard.py --project-name <name> --team-name <name> --github-repository 
 | `--team-name` | Yes | Team name prefix used during onboarding |
 | `--github-repository` | Yes | GitHub repo used during onboarding — identifies the cicd token to revoke |
 | `--policy-sets` | No | Comma-separated policy set names to detach. Defaults to `DEFAULT_POLICY_SETS` in `offboard.py` |
+| `--agent-pools` | No | Comma-separated agent pool names to remove project access from. Defaults to `DEFAULT_AGENT_POOLS` in `offboard.py` |
 | `--yes` | No | Skip the confirmation prompt |
 
 Offboarding tears down resources in this order:
 1. Revoke `{team_name}-cicd` token matching the GitHub repository description
-2. Detach projects from policy sets
-3. Delete variable sets
-4. Remove team-project access entries and delete projects
+2. Delete the `TFE_TOKEN` Actions secret from the GitHub repository
+3. Detach projects from policy sets
+4. Remove projects from agent pools
+5. Delete variable sets
+6. Remove team-project access entries and delete projects
 
 ```bash
 python offboard.py --project-name myapp --team-name platform \
@@ -185,6 +207,7 @@ Both workflows are triggered manually via **Actions → Run workflow** in the Gi
 | `TFE_TOKEN` | HCP Terraform API token |
 | `TFE_ORGANIZATION` | HCP Terraform organisation name |
 | `TFE_HOSTNAME` | Optional — defaults to `app.terraform.io` |
+| `GH_PAT` | GitHub PAT with `Secrets: Read and write` on target repositories. Used to write/delete `TFE_CICD_TOKEN` on the onboarded repository. Fine-grained token recommended. |
 
 **Workflow inputs:**
 
@@ -208,5 +231,8 @@ The offboarding workflow passes `--yes` automatically to skip the interactive co
 
 - [pytfe](https://pypi.org/project/pytfe/) — official HCP Terraform Python client
 - [python-dotenv](https://pypi.org/project/python-dotenv/) — `.env` file support
+- [pynacl](https://pypi.org/project/PyNaCl/) — NaCl encryption required by the GitHub Secrets API
 
 Teams, team tokens, and team-project access use the [HCP Terraform REST API](https://developer.hashicorp.com/terraform/cloud-docs/api-docs) directly, as these endpoints are not yet covered by `pytfe`.
+
+GitHub secret management uses the [GitHub REST API](https://docs.github.com/en/rest/actions/secrets) directly. Secrets must be encrypted with the repository's NaCl public key before being written.
