@@ -11,7 +11,6 @@ import httpx
 
 from pytfe.models import (
     Project,
-    ProjectCreateOptions,
     ProjectListOptions,
     PolicySetAddProjectsOptions,
     PolicySetListOptions,
@@ -193,13 +192,27 @@ def list_projects(client: TFEClient, org: str) -> dict[str, str]:
     return {p.name: p.id for p in projects}
 
 
-def ensure_projects(client: TFEClient, org: str, prefix: str) -> dict[str, str]:
+def ensure_projects(
+    http: HTTPTransport,
+    client: TFEClient,
+    org: str,
+    prefix: str,
+    agent_pool_name: str | None = None,
+) -> dict[str, str]:
     """
     Ensure nprod and prod projects exist.
     Returns {"nprod": project_id, "prod": project_id}
+
+    If agent_pool_name is provided, new projects are created with
+    default-execution-mode=agent and the resolved agent pool assigned.
     """
     envs = ["nprod", "prod"]
     existing = list_projects(client, org)
+
+    agent_pool_id: str | None = None
+    if agent_pool_name:
+        agent_pool_id = _resolve_agent_pool_id(http, org, agent_pool_name)
+
     project_ids: dict[str, str] = {}
 
     for env in envs:
@@ -208,10 +221,23 @@ def ensure_projects(client: TFEClient, org: str, prefix: str) -> dict[str, str]:
             print(f"  [skip] Project '{project_name}' already exists (id={existing[project_name]})")
             project_ids[env] = existing[project_name]
         else:
-            opts = ProjectCreateOptions(name=project_name)
-            project = client.projects.create(org, opts)
-            print(f"  [ok]   Created project '{project_name}' (id={project.id})")
-            project_ids[env] = project.id
+            body: dict = {
+                "data": {
+                    "type": "projects",
+                    "attributes": {"name": project_name},
+                }
+            }
+            if agent_pool_id:
+                body["data"]["attributes"]["default-execution-mode"] = "agent"
+                body["data"]["relationships"] = {
+                    "default-agent-pool": {
+                        "data": {"type": "agent-pools", "id": agent_pool_id}
+                    }
+                }
+            response = http.request("POST", f"/api/v2/organizations/{org}/projects", json_body=body)
+            project_id = response.json()["data"]["id"]
+            print(f"  [ok]   Created project '{project_name}' (id={project_id})")
+            project_ids[env] = project_id
 
     return project_ids
 
@@ -438,70 +464,6 @@ def _resolve_agent_pool_id(http: HTTPTransport, org: str, name: str) -> str | No
     return None
 
 
-def _get_agent_pool_allowed_project_ids(http: HTTPTransport, pool_id: str) -> set[str]:
-    """Return the set of project IDs already in an agent pool's allowed-projects list."""
-    response = http.request("GET", f"/api/v2/agent-pools/{pool_id}")
-    data = response.json().get("data", {})
-    projects = data.get("relationships", {}).get("allowed-projects", {}).get("data", [])
-    return {p["id"] for p in projects}
-
-
-def assign_agent_pool_to_projects(
-    http: HTTPTransport,
-    org: str,
-    project_ids: dict[str, str],
-    agent_pool_name: str,
-    project_prefix: str,
-) -> None:
-    """Grant each project access to the specified agent pool."""
-    pool_id = _resolve_agent_pool_id(http, org, agent_pool_name)
-    if pool_id is None:
-        return
-
-    existing = _get_agent_pool_allowed_project_ids(http, pool_id)
-    to_add = {env: pid for env, pid in project_ids.items() if pid not in existing}
-
-    for env, pid in project_ids.items():
-        if pid in existing:
-            print(f"  [skip] Project '{project_prefix}-{env}' already has access to agent pool '{agent_pool_name}'")
-
-    if to_add:
-        http.request(
-            "POST",
-            f"/api/v2/agent-pools/{pool_id}/relationships/allowed-projects",
-            json_body={"data": [{"id": pid, "type": "projects"} for pid in to_add.values()]},
-        )
-        for env in to_add:
-            print(f"  [ok]   Granted project '{project_prefix}-{env}' access to agent pool '{agent_pool_name}'")
-
-
-def remove_agent_pool_from_projects(
-    http: HTTPTransport,
-    org: str,
-    project_ids: dict[str, str],
-    agent_pool_name: str,
-    project_prefix: str,
-) -> None:
-    """Remove each project from the specified agent pool's allowed-projects list."""
-    pool_id = _resolve_agent_pool_id(http, org, agent_pool_name)
-    if pool_id is None:
-        return
-
-    existing = _get_agent_pool_allowed_project_ids(http, pool_id)
-    to_remove = {env: pid for env, pid in project_ids.items() if pid in existing}
-
-    if not to_remove:
-        project_names = ", ".join(f"'{project_prefix}-{env}'" for env in project_ids)
-        print(f"  [skip] No projects ({project_names}) found in agent pool '{agent_pool_name}'")
-        return
-
-    http.request(
-        "DELETE",
-        f"/api/v2/agent-pools/{pool_id}/relationships/allowed-projects",
-        json_body={"data": [{"id": pid, "type": "projects"} for pid in to_remove.values()]},
-    )
-    for env in to_remove:
-        print(f"  [ok]   Removed project '{project_prefix}-{env}' from agent pool '{agent_pool_name}'")
 
 
 # ---------------------------------------------------------------------------

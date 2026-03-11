@@ -9,11 +9,10 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 | Teams | `{team_name}-reader`, `{team_name}-contributor`, `{team_name}-cicd` |
 | Team token | `{team_name}-cicd` (expires in 1 year, description = GitHub repository) |
 | GitHub secret | `TFE_TOKEN` written to the target GitHub repository |
-| Projects | `{project_name}-nprod`, `{project_name}-prod` |
+| Projects | `{project_name}-nprod`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
 | Team access (per project) | reader → `read`, contributor → `write`, cicd → `write` |
 | Variable sets | `{project_name}-nprod`, `{project_name}-prod` (assigned to their project) |
 | Policy sets | Projects attached to each policy set in `--policy-sets` |
-| Agent pools | Projects granted access to each agent pool in `--agent-pools` |
 
 All teams are created with organisation-level read-only access (`read-workspaces`, `read-projects`). The script is fully idempotent — re-running it skips resources that already exist.
 
@@ -74,7 +73,7 @@ python onboard.py --project-name <name> --team-name <name> --github-repository <
 | `--team-name` | Yes | Prefix for teams (`{name}-reader`, `{name}-contributor`, `{name}-cicd`) |
 | `--github-repository` | Yes | GitHub repo (e.g. `my-org/my-repo`). Used as the cicd team token description |
 | `--policy-sets` | No | Comma-separated policy set names to attach. Defaults to `DEFAULT_POLICY_SETS` in `onboard.py` |
-| `--agent-pools` | No | Comma-separated agent pool names to grant the projects access to. Defaults to `DEFAULT_AGENT_POOLS` in `onboard.py` |
+| `--agent-pool` | No | Agent pool name to set as the default for new projects (execution mode: `agent`). Defaults to `DEFAULT_AGENT_POOL` in `onboard.py` |
 | `--skip-token-creation` | No | Skip creating the cicd team token and writing `TFE_TOKEN` to the GitHub repository |
 
 **Example**
@@ -156,16 +155,14 @@ python offboard.py --project-name <name> --team-name <name> --github-repository 
 | `--team-name` | Yes | Team name prefix used during onboarding |
 | `--github-repository` | Yes | GitHub repo used during onboarding — identifies the cicd token to revoke |
 | `--policy-sets` | No | Comma-separated policy set names to detach. Defaults to `DEFAULT_POLICY_SETS` in `offboard.py` |
-| `--agent-pools` | No | Comma-separated agent pool names to remove project access from. Defaults to `DEFAULT_AGENT_POOLS` in `offboard.py` |
 | `--yes` | No | Skip the confirmation prompt |
 
 Offboarding tears down resources in this order:
 1. Revoke `{team_name}-cicd` token matching the GitHub repository description
 2. Delete the `TFE_TOKEN` Actions secret from the GitHub repository
 3. Detach projects from policy sets
-4. Remove projects from agent pools
-5. Delete variable sets
-6. Remove team-project access entries and delete projects
+4. Delete variable sets
+5. Remove team-project access entries and delete projects
 
 ```bash
 python offboard.py --project-name myapp --team-name platform \

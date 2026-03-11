@@ -7,10 +7,10 @@ Given a project name and team name, this script will:
   2. Create a team token for {team_name}-cicd (description = github_repository) and write it
      as the Actions secret TFE_TOKEN on the target GitHub repository
   3. Create two projects: {project_name}-nprod, {project_name}-prod
+     (with default execution mode set to 'agent' using the specified agent pool)
   4. Grant each team access to both projects (reader=read, contributor=write, cicd=write)
   5. Create a variable set for each project and assign it
   6. Attach each project to the specified policy sets
-  7. Grant each project access to the specified agent pools
 
 Environment variables:
   TFE_TOKEN         HCP Terraform API token (required)
@@ -36,7 +36,6 @@ import dotenv
 from pytfe import TFEClient, TFEConfig
 
 from tfe_helpers import (
-    assign_agent_pool_to_projects,
     assign_policy_sets,
     assign_team_access,
     create_team_tokens,
@@ -97,7 +96,7 @@ def onboard(
 
 
     print("\nStep 3: Ensuring projects exist...")
-    project_ids = ensure_projects(client, org, project_name)
+    project_ids = ensure_projects(http, client, org, project_name, agent_pool_name=agent_pool)
 
     print("\nStep 4: Assigning team access to projects...")
     assign_team_access(http, team_ids, project_ids, project_prefix=project_name, team_prefix=team_name)
@@ -107,9 +106,6 @@ def onboard(
 
     print("\nStep 6: Attaching policy sets to projects...")
     assign_policy_sets(client, org, project_ids, policy_sets)
-
-    print("\nStep 7: Assigning agent pools to projects...")
-    assign_agent_pool_to_projects(http, org, project_ids, agent_pool, project_prefix=project_name)
 
     print("\n=== Onboarding complete! ===\n")
 

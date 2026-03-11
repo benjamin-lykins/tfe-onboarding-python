@@ -8,10 +8,8 @@ Resources removed:
   1. Team token on {team_name}-cicd matching the github_repository description
      and the TFE_TOKEN Actions secret on the target GitHub repository
   2. Projects removed from policy sets
-  3. Projects removed from agent pools
-  4. Variable sets ({project_name}-nprod, {project_name}-prod)
-  5. Team-project access entries
-  6. Projects ({project_name}-nprod, {project_name}-prod)
+  3. Variable sets ({project_name}-nprod, {project_name}-prod)
+  4. Team-project access entries and projects ({project_name}-nprod, {project_name}-prod)
 
 Environment variables:
   TFE_TOKEN         HCP Terraform API token (required)
@@ -39,7 +37,6 @@ from tfe_helpers import (
     get_http,
     list_projects,
     list_teams,
-    remove_agent_pool_from_projects,
     remove_policy_sets,
 )
 
@@ -48,10 +45,6 @@ DEFAULT_POLICY_SETS: list[str] = [
     "default-policy",
 ]
 
-# Must match the DEFAULT_AGENT_POOL defined in onboard.py (or pass --agent-pool explicitly).
-DEFAULT_AGENT_POOL: str = "default-agent-pool"
-
-
 def offboard(
     project_name: str,
     team_name: str,
@@ -59,7 +52,6 @@ def offboard(
     github_repository: str,
     github_token: str | None,
     policy_sets: list[str],
-    agent_pool: str,
     client: TFEClient,
     http,
 ) -> None:
@@ -95,16 +87,10 @@ def offboard(
     else:
         print("  [skip] No projects found to remove from policy sets")
 
-    print("\nStep 3: Removing projects from agent pools...")
-    if project_ids:
-        remove_agent_pool_from_projects(http, org, project_ids, agent_pool, project_prefix=project_name)
-    else:
-        print("  [skip] No projects found to remove from agent pools")
-
-    print("\nStep 4: Deleting variable sets...")
+    print("\nStep 3: Deleting variable sets...")
     delete_varsets(client, org, project_name)
 
-    print("\nStep 5: Deleting projects (and their team access)...")
+    print("\nStep 4: Deleting projects (and their team access)...")
     delete_projects(http, client, org, project_name)
 
     print(f"\n=== Offboarding complete! ===")
@@ -142,15 +128,6 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--agent-pools",
-        required=False,
-        default=",".join(DEFAULT_AGENT_POOLS),
-        help=(
-            "Comma-separated list of agent pool names to remove project access from. "
-            f"Defaults to: {', '.join(DEFAULT_AGENT_POOLS)}"
-        ),
-    )
-    parser.add_argument(
         "--yes",
         action="store_true",
         help="Skip confirmation prompt",
@@ -163,14 +140,12 @@ if __name__ == "__main__":
         sys.exit(1)
 
     policy_set_list = [p.strip() for p in args.policy_sets.split(",") if p.strip()]
-    agent_pool_list = [p.strip() for p in args.agent_pools.split(",") if p.strip()]
 
     if not args.yes:
         print(f"\nThis will delete the following resources in org '{org}':")
         print(f"  Team tokens   : token with description '{args.github_repository}' on team '{args.team_name}-cicd'")
         print(f"  GitHub secret : TFE_TOKEN on {args.github_repository}")
         print(f"  Policy sets   : detach '{', '.join(policy_set_list)}' from {args.project_name}-nprod, {args.project_name}-prod")
-        print(f"  Agent pools   : remove '{', '.join(agent_pool_list)}' access from {args.project_name}-nprod, {args.project_name}-prod")
         print(f"  Variable sets : {args.project_name}-nprod, {args.project_name}-prod")
         print(f"  Projects      : {args.project_name}-nprod, {args.project_name}-prod")
         print(f"  Team access   : all entries for the above projects")
@@ -193,7 +168,6 @@ if __name__ == "__main__":
         github_repository=args.github_repository,
         github_token=github_token,
         policy_sets=policy_set_list,
-        agent_pools=agent_pool_list,
         client=tfe_client,
         http=http_transport,
     )
