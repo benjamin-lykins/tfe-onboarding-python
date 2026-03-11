@@ -41,6 +41,12 @@ DEFAULT_AGENT_POOLS: list[str] = [
     "default-agent-pool",
 ]
 
+# Edit this to update the teams which will get an initial token created during onboarding.
+DEFAULT_TEAMS_WITH_TOKENS: list[str] = [
+    "cicd",
+]
+
+
 
 def onboard(
     project_name: str,
@@ -57,12 +63,17 @@ def onboard(
     print("Step 1: Ensuring teams exist...")
     team_ids = ensure_teams(http, org, team_name)
 
-    print("\nStep 2: Creating team tokens...")
-    tokens = create_team_tokens(http, org, {"cicd": team_ids["cicd"]}, team_name, description=github_repository)
+    print("\nStep 2: Creating cicd team token...")
+    tokens = create_team_tokens(http, org, {role: team_ids[role] for role in DEFAULT_TEAMS_WITH_TOKENS if role in team_ids}, team_name, description=github_repository)
     if tokens:
-        print("\n  Store these token values — they will not be shown again:")
+        print("\n  Storing team token values in environment variables:")
         for role, token_value in tokens.items():
-            print(f"    {team_name}-{role}: {token_value}")
+            print(f"    {team_name}-{role}")
+            print(f"    'TEAM_{role.upper()}_TOKEN'")
+            os.environ[f'TEAM_{role.upper()}_TOKEN'] = f'{token_value}'
+            # For debugging purposes, uncomment the following line to print the token value
+            # print(f"    Token value: {os.environ[f'TEAM_{role.upper()}_TOKEN']}")
+
 
     print("\nStep 3: Ensuring projects exist...")
     project_ids = ensure_projects(client, org, project_name)
