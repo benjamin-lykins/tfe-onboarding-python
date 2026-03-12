@@ -63,19 +63,8 @@ def create_team(http: HTTPTransport, org: str, name: str) -> str:
             "attributes": {
                 "name": name,
                 "visibility": "secret",
-                "organization-access": {
-                    "manage-policies": False,
-                    "manage-policy-overrides": False,
-                    "manage-workspaces": False,
-                    "manage-vcs-settings": False,
-                    "manage-providers": False,
-                    "manage-modules": False,
-                    "manage-run-tasks": False,
-                    "manage-projects": False,
-                    "read-workspaces": True,
-                    "read-projects": True,
-                    "manage-membership": False,
-                },
+                "permissions": {},
+                "allow-member-token-management": False,
             },
         }
     }
