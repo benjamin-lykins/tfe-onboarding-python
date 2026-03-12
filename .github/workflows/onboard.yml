@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       project_name:
-        description: "Project name prefix (creates {name}-nprod and {name}-prod)"
+        description: "Project name prefix (creates {name}-nprd and {name}-prod)"
         required: true
       team_name:
         description: "Team name prefix (creates {name}-nprd-* and {name}-prod-* teams)"

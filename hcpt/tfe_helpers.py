@@ -213,8 +213,8 @@ def ensure_projects(
     agent_pool_name: str | None = None,
 ) -> dict[str, str]:
     """
-    Ensure nprod and prod projects exist.
-    Returns {"nprod": project_id, "prod": project_id}
+    Ensure nprd and prod projects exist.
+    Returns {"nprd": project_id, "prod": project_id}
 
     If agent_pool_name is provided, new projects are created with
     default-execution-mode=agent and the resolved agent pool assigned.
@@ -300,12 +300,15 @@ _ROLE_ACCESS: dict[str, dict] = {
     },
     "contributor": {
         "access": "custom",
-        "project-access": {"settings": "read", "teams": "none"},
+        "project-access": {
+            "settings": "read", 
+            "teams": "none",
+            "variable-sets": "none"},
         "workspace-access": {
             "runs": "plan",
             "sentinel-mocks": "none",
             "state-versions": "none",
-            "variables": "none",
+            "variables": "read",
             "create": False,
             "locking": False,
             "delete": False,
@@ -318,7 +321,7 @@ _ROLE_ACCESS: dict[str, dict] = {
         "project-access": {"settings": "read", "teams": "none"},
         "workspace-access": {
             "runs": "apply",
-            "sentinel-mocks": "none",
+            "sentinel-mocks": "read",
             "state-versions": "read-outputs",
             "variables": "write",
             "create": True,
@@ -332,7 +335,7 @@ _ROLE_ACCESS: dict[str, dict] = {
 
 
 # Maps project env key → team env key
-_PROJECT_TO_TEAM_ENV: dict[str, str] = {"nprod": "nprd", "prod": "prod"}
+_PROJECT_TO_TEAM_ENV: dict[str, str] = {"nprd": "nprd", "prod": "prod"}
 
 
 def assign_team_access(
@@ -372,7 +375,7 @@ def assign_team_access(
 # ---------------------------------------------------------------------------
 
 def delete_projects(http: HTTPTransport, client: TFEClient, org: str, prefix: str) -> None:
-    """Remove team access then delete nprod and prod projects."""
+    """Remove team access then delete nprd and prod projects."""
     existing = list_projects(client, org)
     for env in _PROJECT_TO_TEAM_ENV:
         project_name = f"{prefix}-{env}"
@@ -438,7 +441,7 @@ def ensure_varsets(
 
 
 def delete_varsets(client: TFEClient, org: str, prefix: str) -> None:
-    """Delete the nprod and prod variable sets for a prefix."""
+    """Delete the nprd and prod variable sets for a prefix."""
     existing = {
         vs.name: vs.id
         for vs in client.variable_sets.list(org, VariableSetListOptions())

@@ -9,16 +9,16 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 | Teams | `{team_name}-nprd-reader`, `{team_name}-nprd-contributor`, `{team_name}-nprd-cicd`, `{team_name}-prod-reader`, `{team_name}-prod-contributor`, `{team_name}-prod-cicd` |
 | Team tokens | `{team_name}-nprd-cicd`, `{team_name}-prod-cicd` (expire in 1 year, description = GitHub repository) |
 | Key Vault secrets | `TFE-TOKEN-NPRD`, `TFE-TOKEN-PROD` written to the specified Azure Key Vault |
-| Projects | `{project_name}-nprod`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
+| Projects | `{project_name}-nprd`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
 | Team access (per project) | see [Team access](#team-access) below |
-| Variable sets | `{project_name}-nprod`, `{project_name}-prod` (assigned to their project) |
+| Variable sets | `{project_name}-nprd`, `{project_name}-prod` (assigned to their project) |
 | Policy sets | Projects attached to each policy set in `--policy-sets` |
 
 All teams are created with organisation-level read-only access (`read-workspaces`, `read-projects`). The script is fully idempotent — re-running it skips resources that already exist.
 
 ### Team access
 
-Each env-scoped team is granted access only to its matching project (`-nprd-*` teams → `{project_name}-nprod`, `-prod-*` teams → `{project_name}-prod`):
+Each env-scoped team is granted access only to its matching project (`-nprd-*` teams → `{project_name}-nprd`, `-prod-*` teams → `{project_name}-prod`):
 
 | Team | Access type | Permissions |
 |---|---|---|
@@ -80,7 +80,7 @@ python onboard.py --project-name <name> --team-name <name> --github-repository <
 
 | Argument | Required | Description |
 |---|---|---|
-| `--project-name` | Yes | Prefix for projects (`{name}-nprod`, `{name}-prod`) and variable sets |
+| `--project-name` | Yes | Prefix for projects (`{name}-nprd`, `{name}-prod`) and variable sets |
 | `--team-name` | Yes | Prefix for teams (`{name}-nprd-*`, `{name}-prod-*`) |
 | `--github-repository` | Yes | GitHub repo (e.g. `my-org/my-repo`). Used as the cicd team token description |
 | `--keyvault-name` | No | Azure Key Vault name. If set, cicd tokens are stored as `TFE-TOKEN-NPRD` / `TFE-TOKEN-PROD` using `DefaultAzureCredential` |
@@ -109,22 +109,22 @@ Step 2: Creating cicd team tokens...
     [ok]   Set secret 'TFE-TOKEN-PROD'
 
 Step 3: Ensuring projects exist...
-  [ok]   Created project 'myapp-nprod' (id=prj-abc123)
+  [ok]   Created project 'myapp-nprd' (id=prj-abc123)
   [ok]   Created project 'myapp-prod' (id=prj-def456)
 
 Step 4: Assigning team access to projects...
-  [ok]   Granted 'read' access to team 'platform-reader' on project 'myapp-nprod'
-  [ok]   Granted 'custom' access to team 'platform-contributor' on project 'myapp-nprod'
-  [ok]   Granted 'custom' access to team 'platform-cicd' on project 'myapp-nprod'
+  [ok]   Granted 'read' access to team 'platform-reader' on project 'myapp-nprd'
+  [ok]   Granted 'custom' access to team 'platform-contributor' on project 'myapp-nprd'
+  [ok]   Granted 'custom' access to team 'platform-cicd' on project 'myapp-nprd'
   ...
 
 Step 5: Creating and assigning variable sets...
-  [ok]   Created variable set 'myapp-nprod' (id=varset-abc123)
-  [ok]   Assigned variable set 'myapp-nprod' to project 'myapp-nprod'
+  [ok]   Created variable set 'myapp-nprd' (id=varset-abc123)
+  [ok]   Assigned variable set 'myapp-nprd' to project 'myapp-nprd'
   ...
 
 Step 6: Attaching policy sets to projects...
-  [ok]   Attached policy set 'default-policy' to projects 'nprod', 'prod'
+  [ok]   Attached policy set 'default-policy' to projects 'nprd', 'prod'
 
 === Onboarding complete! ===
 ```
@@ -173,8 +173,8 @@ python offboard.py --project-name <name> --team-name <name>
 
 Offboarding tears down resources in this order:
 1. Check that both projects have no workspaces (aborts if any exist)
-2. Delete variable sets (`{project_name}-nprod`, `{project_name}-prod`)
-3. Remove team-project access entries and delete projects (`{project_name}-nprod`, `{project_name}-prod`)
+2. Delete variable sets (`{project_name}-nprd`, `{project_name}-prod`)
+3. Remove team-project access entries and delete projects (`{project_name}-nprd`, `{project_name}-prod`)
 4. Delete teams (`{team_name}-nprd-reader/contributor/cicd`, `{team_name}-prod-reader/contributor/cicd`)
 
 ```bash
