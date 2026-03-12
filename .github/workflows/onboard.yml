@@ -16,6 +16,9 @@ on:
 
 jobs:
   onboard:
+    defaults:
+      run:
+        working-directory: ./hcpt
     name: Onboard ${{ inputs.project_name }}
     runs-on: ubuntu-latest
 
