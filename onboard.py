@@ -3,9 +3,9 @@
 HCP Terraform Project Onboarding Script
 
 Given a project name and team name, this script will:
-  1. Create three teams (if they don't exist): {team_name}-contributor, {team_name}-reader, {team_name}-cicd
-  2. Create a team token for {team_name}-cicd (description = github_repository) and write it
-     as the Actions secret TFE_TOKEN on the target GitHub repository
+  1. Create six teams (if they don't exist): {team_name}-nprd-reader/contributor/cicd and {team_name}-prod-reader/contributor/cicd
+  2. Create team tokens for {team_name}-nprd-cicd and {team_name}-prod-cicd (description = github_repository)
+     and write them as Actions secrets TFE_TOKEN_NPRD and TFE_TOKEN_PROD on the target GitHub repository
   3. Create two projects: {project_name}-nprod, {project_name}-prod
      (with default execution mode set to 'agent' using the specified agent pool)
   4. Grant each team access to both projects (reader=read, contributor=custom/plan-only, cicd=custom/create+apply+variables)
@@ -51,6 +51,7 @@ DEFAULT_POLICY_SETS: list[str] = [
     "default-policy",
 ]
 
+
 # Edit this string to change the default agent pool applied to every onboarded project.
 DEFAULT_AGENT_POOL: str = "default-agent-pool"
 
@@ -64,6 +65,7 @@ DEFAULT_TEAMS_WITH_TOKENS: list[str] = [
 def onboard(
     project_name: str,
     team_name: str,
+
     org: str,
     github_repository: str,
     github_token: str | None,
@@ -78,9 +80,10 @@ def onboard(
     print("Step 1: Ensuring teams exist...")
     team_ids = ensure_teams(http, org, team_name)
 
-    print("\nStep 2: Creating cicd team token...")
+    print("\nStep 2: Creating cicd team tokens...")
     if not skip_token_creation:
-        tokens = create_team_tokens(http, org, {"cicd": team_ids["cicd"]}, team_name, description=github_repository)
+        cicd_team_ids = {k: v for k, v in team_ids.items() if k.endswith("-cicd")}
+        tokens = create_team_tokens(http, org, cicd_team_ids, team_name, description=github_repository)
         if tokens:
             owner, repo_name = github_repository.split("/", 1)
             if not github_token:
@@ -88,11 +91,12 @@ def onboard(
             else:
                 print(f"\n  Writing team tokens as GitHub Actions secrets on {github_repository}:")
             for role, token_value in tokens.items():
-                secret_name = f"TFE_TOKEN"
+                env = role.replace("-cicd", "").upper()
+                secret_name = f"TFE_TOKEN_{env}"
                 set_repo_secret(github_token, owner, repo_name, secret_name, token_value)
                 print(f"    [ok]   Set secret '{secret_name}'")
-    else: 
-         print("  [skip] Skipping cicd team token creation and GitHub secret write")
+    else:
+        print("  [skip] Skipping cicd team token creation and GitHub secret write")
 
 
     print("\nStep 3: Ensuring projects exist...")
@@ -124,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--team-name",
         required=True,
-        help="Team name prefix (e.g. 'myapp'). Teams will be named '{name}-reader', '{name}-contributor', '{name}-cicd'.",
+        help="Team name prefix (e.g. 'myapp'). Teams will be named '{name}-{env}-reader/contributor/cicd' and '{name}-prod-reader/contributor/cicd'.",
     )
     parser.add_argument(
         "--skip-token-creation",

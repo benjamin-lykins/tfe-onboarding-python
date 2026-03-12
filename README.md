@@ -6,9 +6,9 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 
 | Resource | Names created |
 |---|---|
-| Teams | `{team_name}-reader`, `{team_name}-contributor`, `{team_name}-cicd` |
-| Team token | `{team_name}-cicd` (expires in 1 year, description = GitHub repository) |
-| GitHub secret | `TFE_TOKEN` written to the target GitHub repository |
+| Teams | `{team_name}-nprd-reader`, `{team_name}-nprd-contributor`, `{team_name}-nprd-cicd`, `{team_name}-prod-reader`, `{team_name}-prod-contributor`, `{team_name}-prod-cicd` |
+| Team tokens | `{team_name}-nprd-cicd`, `{team_name}-prod-cicd` (expire in 1 year, description = GitHub repository) |
+| GitHub secrets | `TFE_TOKEN_NPRD`, `TFE_TOKEN_PROD` written to the target GitHub repository |
 | Projects | `{project_name}-nprod`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
 | Team access (per project) | see [Team access](#team-access) below |
 | Variable sets | `{project_name}-nprod`, `{project_name}-prod` (assigned to their project) |
@@ -18,13 +18,13 @@ All teams are created with organisation-level read-only access (`read-workspaces
 
 ### Team access
 
-Each team is granted project-level access with the following custom permissions:
+Each env-scoped team is granted access only to its matching project (`-nprd-*` teams → `{project_name}-nprod`, `-prod-*` teams → `{project_name}-prod`):
 
 | Team | Access type | Permissions |
 |---|---|---|
-| `{team_name}-reader` | `read` | Read-only access to the project |
-| `{team_name}-contributor` | `custom` | Runs: `plan` only. No workspace, variable, or state access. |
-| `{team_name}-cicd` | `custom` | Create workspaces: ✓ · Runs: `apply` · Variables: `read/write` · State versions: `read-outputs` |
+| `{team_name}-{env}-reader` | `read` | Read-only access to the project |
+| `{team_name}-{env}-contributor` | `custom` | Runs: `plan` only. No workspace, variable, or state access. |
+| `{team_name}-{env}-cicd` | `custom` | Create workspaces: ✓ · Runs: `apply` · Variables: `read/write` · State versions: `read-outputs` |
 
 ## Prerequisites
 
@@ -170,7 +170,7 @@ python offboard.py --project-name <name> --team-name <name>
 Offboarding tears down resources in this order:
 1. Check that both projects have no workspaces (aborts if any exist)
 2. Remove team-project access entries and delete projects (`{project_name}-nprod`, `{project_name}-prod`)
-3. Delete teams (`{team_name}-reader`, `{team_name}-contributor`, `{team_name}-cicd`)
+3. Delete teams (`{team_name}-nprd-reader/contributor/cicd`, `{team_name}-prod-reader/contributor/cicd`)
 
 ```bash
 python offboard.py --project-name myapp --team-name platform

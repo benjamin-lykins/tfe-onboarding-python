@@ -39,6 +39,11 @@ def get_http(config: TFEConfig) -> HTTPTransport:
     )
 
 
+DEFAULT_ENVIRONMENTS: list[str] = [
+    "nprd",
+    "prod",
+]
+
 # ---------------------------------------------------------------------------
 # Teams
 # ---------------------------------------------------------------------------
@@ -80,22 +85,25 @@ def create_team(http: HTTPTransport, org: str, name: str) -> str:
 
 def ensure_teams(http: HTTPTransport, org: str, prefix: str) -> dict[str, str]:
     """
-    Ensure the three onboarding teams exist.
-    Returns {role: team_id} e.g. {"reader": "team-abc", ...}
+    Ensure the six onboarding teams exist (three per environment).
+    Returns {"nprd-reader": team_id, "nprd-contributor": team_id, "nprd-cicd": team_id,
+             "prod-reader": team_id, "prod-contributor": team_id, "prod-cicd": team_id}
     """
     roles = ["reader", "contributor", "cicd"]
     existing = list_teams(http, org)
     team_ids: dict[str, str] = {}
 
-    for role in roles:
-        team_name = f"{prefix}-{role}"
-        if team_name in existing:
-            print(f"  [skip] Team '{team_name}' already exists (id={existing[team_name]})")
-            team_ids[role] = existing[team_name]
-        else:
-            tid = create_team(http, org, team_name)
-            print(f"  [ok]   Created team '{team_name}' (id={tid})")
-            team_ids[role] = tid
+    for env in DEFAULT_ENVIRONMENTS:
+        for role in roles:
+            key = f"{env}-{role}"
+            team_name = f"{prefix}-{key}"
+            if team_name in existing:
+                print(f"  [skip] Team '{team_name}' already exists (id={existing[team_name]})")
+                team_ids[key] = existing[team_name]
+            else:
+                tid = create_team(http, org, team_name)
+                print(f"  [ok]   Created team '{team_name}' (id={tid})")
+                team_ids[key] = tid
 
     return team_ids
 
@@ -216,7 +224,7 @@ def ensure_projects(
     If agent_pool_name is provided, new projects are created with
     default-execution-mode=agent and the resolved agent pool assigned.
     """
-    envs = ["nprod", "prod"]
+    envs = list(_PROJECT_TO_TEAM_ENV)
     existing = list_projects(client, org)
 
     agent_pool_id: str | None = None
@@ -328,6 +336,10 @@ _ROLE_ACCESS: dict[str, dict] = {
 }
 
 
+# Maps project env key → team env key
+_PROJECT_TO_TEAM_ENV: dict[str, str] = {"nprod": "nprd", "prod": "prod"}
+
+
 def assign_team_access(
     http: HTTPTransport,
     team_ids: dict[str, str],
@@ -336,18 +348,20 @@ def assign_team_access(
     team_prefix: str,
 ) -> None:
     """
-    Add teams to both projects with role-specific access:
-      reader      -> read
-      contributor -> custom: plan-only runs
-      cicd        -> custom: create workspaces, apply runs, read/write variables
+    Add env-scoped teams to their matching project with role-specific access:
+      {env}-reader      -> read
+      {env}-contributor -> custom: plan-only runs
+      {env}-cicd        -> custom: create workspaces, apply runs, read/write variables
     """
     for env, project_id in project_ids.items():
         project_name = f"{project_prefix}-{env}"
+        team_env = _PROJECT_TO_TEAM_ENV[env]
         existing_team_ids = get_existing_team_project_access(http, project_id)
 
         for role, attributes in _ROLE_ACCESS.items():
-            team_id = team_ids[role]
-            team_name = f"{team_prefix}-{role}"
+            key = f"{team_env}-{role}"
+            team_id = team_ids[key]
+            team_name = f"{team_prefix}-{key}"
             if team_id in existing_team_ids:
                 print(f"  [skip] Team '{team_name}' already has access to project '{project_name}'")
             else:
@@ -365,7 +379,7 @@ def assign_team_access(
 def delete_projects(http: HTTPTransport, client: TFEClient, org: str, prefix: str) -> None:
     """Remove team access then delete nprod and prod projects."""
     existing = list_projects(client, org)
-    for env in ["nprod", "prod"]:
+    for env in _PROJECT_TO_TEAM_ENV:
         project_name = f"{prefix}-{env}"
         if project_name not in existing:
             print(f"  [skip] Project '{project_name}' not found")
@@ -376,16 +390,17 @@ def delete_projects(http: HTTPTransport, client: TFEClient, org: str, prefix: st
 
 
 def delete_teams(http: HTTPTransport, org: str, prefix: str) -> None:
-    """Delete the three onboarding teams for a given prefix."""
+    """Delete the six onboarding teams (three per environment) for a given prefix."""
     existing = list_teams(http, org)
-    for role in ["reader", "contributor", "cicd"]:
-        team_name = f"{prefix}-{role}"
-        if team_name not in existing:
-            print(f"  [skip] Team '{team_name}' not found")
-            continue
-        team_id = existing[team_name]
-        http.request("DELETE", f"/api/v2/teams/{team_id}")
-        print(f"  [ok]   Deleted team '{team_name}'")
+    for env in DEFAULT_ENVIRONMENTS:
+        for role in ["reader", "contributor", "cicd"]:
+            team_name = f"{prefix}-{env}-{role}"
+            if team_name not in existing:
+                print(f"  [skip] Team '{team_name}' not found")
+                continue
+            team_id = existing[team_name]
+            http.request("DELETE", f"/api/v2/teams/{team_id}")
+            print(f"  [ok]   Deleted team '{team_name}'")
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +448,7 @@ def delete_varsets(client: TFEClient, org: str, prefix: str) -> None:
         vs.name: vs.id
         for vs in client.variable_sets.list(org, VariableSetListOptions())
     }
-    for env in ["nprod", "prod"]:
+    for env in _PROJECT_TO_TEAM_ENV:
         varset_name = f"{prefix}-{env}"
         if varset_name not in existing:
             print(f"  [skip] Variable set '{varset_name}' not found")
