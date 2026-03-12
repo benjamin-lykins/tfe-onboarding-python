@@ -39,6 +39,7 @@ def get_http(config: TFEConfig) -> HTTPTransport:
     )
 
 
+
 DEFAULT_ENVIRONMENTS: list[str] = [
     "nprd",
     "prod",
@@ -56,7 +57,10 @@ def list_teams(http: HTTPTransport, org: str) -> dict[str, str]:
 
 
 def create_team(http: HTTPTransport, org: str, name: str) -> str:
-    """Create a team with organisation read-only access and return its ID."""
+    """
+    Create a team with no organisation access and return its ID.
+    Permissions will be set on a project level. 
+    """
     payload = {
         "data": {
             "type": "teams",
