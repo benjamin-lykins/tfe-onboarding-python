@@ -1,3 +1,5 @@
 pytfe
 python-dotenv
 pynacl
+azure-identity
+azure-keyvault-secrets

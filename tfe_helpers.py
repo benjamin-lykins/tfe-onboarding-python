@@ -8,6 +8,8 @@ import base64
 import datetime
 
 import httpx
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
 from pytfe.models import (
     Project,
@@ -517,6 +519,17 @@ def _resolve_agent_pool_id(http: HTTPTransport, org: str, name: str) -> str | No
     return None
 
 
+
+
+# ---------------------------------------------------------------------------
+# Azure Key Vault
+# ---------------------------------------------------------------------------
+
+def set_keyvault_secret(vault_name: str, secret_name: str, secret_value: str) -> None:
+    """Create or update a secret in Azure Key Vault using DefaultAzureCredential."""
+    vault_url = f"https://{vault_name}.vault.azure.net"
+    client = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
+    client.set_secret(secret_name, secret_value)
 
 
 # ---------------------------------------------------------------------------

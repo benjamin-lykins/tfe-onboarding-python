@@ -8,7 +8,7 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 |---|---|
 | Teams | `{team_name}-nprd-reader`, `{team_name}-nprd-contributor`, `{team_name}-nprd-cicd`, `{team_name}-prod-reader`, `{team_name}-prod-contributor`, `{team_name}-prod-cicd` |
 | Team tokens | `{team_name}-nprd-cicd`, `{team_name}-prod-cicd` (expire in 1 year, description = GitHub repository) |
-| GitHub secrets | `TFE_TOKEN_NPRD`, `TFE_TOKEN_PROD` written to the target GitHub repository |
+| Key Vault secrets | `TFE-TOKEN-NPRD`, `TFE-TOKEN-PROD` written to the specified Azure Key Vault |
 | Projects | `{project_name}-nprod`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
 | Team access (per project) | see [Team access](#team-access) below |
 | Variable sets | `{project_name}-nprod`, `{project_name}-prod` (assigned to their project) |
@@ -32,7 +32,7 @@ Each env-scoped team is granted access only to its matching project (`-nprd-*` t
 - An HCP Terraform organisation
 - An API token with permission to manage teams, projects, variable sets, and policy sets
 - `make` (Windows: install via [Git for Windows](https://gitforwindows.org/), [Chocolatey](https://chocolatey.org/) `choco install make`, or [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
-- GitHub Actions token with access to the target repository's secrets (required to write `TFE_TOKEN` during onboarding)
+- Azure identity with `Key Vault Secrets Officer` (or `Key Vault Administrator`) role on the target Key Vault (required to write team tokens during onboarding)
 
 ## Setup
 
@@ -64,12 +64,12 @@ TFE_ORGANIZATION=your-org-name
 # Optional — defaults to app.terraform.io
 # TFE_HOSTNAME=app.terraform.io
 
-# GitHub PAT or fine-grained token with "Secrets: Read and write" on the target repo.
-# Required to write TFE_TOKEN on the GitHub repository during onboarding.
-# Fine-grained token (recommended): Settings → Developer settings → Personal access tokens → Fine-grained tokens
-#   Permissions: Secrets → Read and write
-# Classic token: requires the repo scope
-GITHUB_TOKEN=your-github-pat-here
+# Azure credentials for Key Vault secret storage (used by DefaultAzureCredential).
+# When running locally, `az login` is sufficient — no env vars needed.
+# For CI/CD, set these for a service principal:
+# AZURE_TENANT_ID=your-tenant-id
+# AZURE_CLIENT_ID=your-client-id
+# AZURE_CLIENT_SECRET=your-client-secret
 ```
 
 ## Onboarding
@@ -81,29 +81,32 @@ python onboard.py --project-name <name> --team-name <name> --github-repository <
 | Argument | Required | Description |
 |---|---|---|
 | `--project-name` | Yes | Prefix for projects (`{name}-nprod`, `{name}-prod`) and variable sets |
-| `--team-name` | Yes | Prefix for teams (`{name}-reader`, `{name}-contributor`, `{name}-cicd`) |
+| `--team-name` | Yes | Prefix for teams (`{name}-nprd-*`, `{name}-prod-*`) |
 | `--github-repository` | Yes | GitHub repo (e.g. `my-org/my-repo`). Used as the cicd team token description |
+| `--keyvault-name` | No | Azure Key Vault name. If set, cicd tokens are stored as `TFE-TOKEN-NPRD` / `TFE-TOKEN-PROD` using `DefaultAzureCredential` |
 | `--policy-sets` | No | Comma-separated policy set names to attach. Defaults to `DEFAULT_POLICY_SETS` in `onboard.py` |
 | `--agent-pool` | No | Agent pool name to set as the default for new projects (execution mode: `agent`). Defaults to `DEFAULT_AGENT_POOL` in `onboard.py` |
-| `--skip-token-creation` | No | Skip creating the cicd team token and writing `TFE_TOKEN` to the GitHub repository |
+| `--skip-token-creation` | No | Skip creating the cicd team tokens and Key Vault secret storage |
 
 **Example**
 
 ```
-$ python onboard.py --project-name myapp --team-name platform --github-repository my-org/my-repo
+$ python onboard.py --project-name myapp --team-name platform --github-repository my-org/my-repo --keyvault-name my-keyvault
 
 === Onboarding 'myapp' into HCP Terraform org 'my-org' ===
 
 Step 1: Ensuring teams exist...
-  [ok]   Created team 'platform-reader' (id=team-abc123)
-  [ok]   Created team 'platform-contributor' (id=team-def456)
-  [ok]   Created team 'platform-cicd' (id=team-ghi789)
+  [ok]   Created team 'platform-nprd-reader' (id=team-abc123)
+  [ok]   Created team 'platform-nprd-contributor' (id=team-def456)
+  [ok]   Created team 'platform-nprd-cicd' (id=team-ghi789)
+  [ok]   Created team 'platform-prod-reader' (id=team-jkl012)
+  [ok]   Created team 'platform-prod-contributor' (id=team-mno345)
+  [ok]   Created team 'platform-prod-cicd' (id=team-pqr678)
 
-Step 2: Creating cicd team token...
-  [ok]   Created token for team 'platform-cicd' (description: my-org/my-repo)
-
-  Writing team tokens as GitHub Actions secrets on my-org/my-repo:
-    [ok]   Set secret 'TFE_TOKEN'
+Step 2: Creating cicd team tokens...
+  Writing team tokens to Key Vault 'my-keyvault':
+    [ok]   Set secret 'TFE-TOKEN-NPRD'
+    [ok]   Set secret 'TFE-TOKEN-PROD'
 
 Step 3: Ensuring projects exist...
   [ok]   Created project 'myapp-nprod' (id=prj-abc123)
@@ -126,11 +129,12 @@ Step 6: Attaching policy sets to projects...
 === Onboarding complete! ===
 ```
 
-Use `--skip-token-creation` to skip Step 2 entirely — useful when re-running onboarding on an existing project where the token was already created, or when the token and GitHub secret are managed separately:
+Use `--skip-token-creation` to skip Step 2 entirely — useful when re-running onboarding on an existing project where the tokens were already created:
 
 ```bash
 python onboard.py --project-name myapp --team-name platform \
   --github-repository my-org/my-repo \
+  --keyvault-name my-keyvault \
   --skip-token-creation
 ```
 
@@ -211,7 +215,9 @@ Both workflows are triggered manually via **Actions → Run workflow** in the Gi
 | `TFE_TOKEN` | both | HCP Terraform API token |
 | `TFE_ORGANIZATION` | both | HCP Terraform organisation name |
 | `TFE_HOSTNAME` | both | Optional — defaults to `app.terraform.io` |
-| `GH_PAT` | onboard only | GitHub PAT with `Secrets: Read and write` on target repositories. Used to write `TFE_TOKEN` on the onboarded repository. Fine-grained token recommended. |
+| `AZURE_TENANT_ID` | onboard only | Azure tenant ID for service principal auth (not needed with managed identity) |
+| `AZURE_CLIENT_ID` | onboard only | Azure client ID for service principal auth |
+| `AZURE_CLIENT_SECRET` | onboard only | Azure client secret for service principal auth |
 
 **Workflow inputs:**
 
@@ -259,7 +265,9 @@ Replace `<owner>/<repo>` with the repository hosting these workflows. A `204 No 
 - [pytfe](https://pypi.org/project/pytfe/) — official HCP Terraform Python client
 - [python-dotenv](https://pypi.org/project/python-dotenv/) — `.env` file support
 - [pynacl](https://pypi.org/project/PyNaCl/) — NaCl encryption required by the GitHub Secrets API
+- [azure-identity](https://pypi.org/project/azure-identity/) — `DefaultAzureCredential` for Key Vault authentication
+- [azure-keyvault-secrets](https://pypi.org/project/azure-keyvault-secrets/) — Azure Key Vault secret management
 
 Teams, team tokens, and team-project access use the [HCP Terraform REST API](https://developer.hashicorp.com/terraform/cloud-docs/api-docs) directly, as these endpoints are not yet covered by `pytfe`.
 
-GitHub secret management uses the [GitHub REST API](https://docs.github.com/en/rest/actions/secrets) directly. Secrets must be encrypted with the repository's NaCl public key before being written.
+Team tokens are stored in Azure Key Vault using `DefaultAzureCredential`, which supports `az login` locally and environment variables or managed identity in CI/CD.

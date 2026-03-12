@@ -43,7 +43,7 @@ from tfe_helpers import (
     ensure_teams,
     ensure_varsets,
     get_http,
-    set_repo_secret,
+    set_keyvault_secret,
 )
 
 # Edit this list to change the default policy sets applied to every onboarded project.
@@ -65,10 +65,9 @@ DEFAULT_TEAMS_WITH_TOKENS: list[str] = [
 def onboard(
     project_name: str,
     team_name: str,
-
     org: str,
     github_repository: str,
-    github_token: str | None,
+    keyvault_name: str | None,
     policy_sets: list[str],
     agent_pool: str,
     client: TFEClient,
@@ -85,18 +84,18 @@ def onboard(
         cicd_team_ids = {k: v for k, v in team_ids.items() if k.endswith("-cicd")}
         tokens = create_team_tokens(http, org, cicd_team_ids, team_name, description=github_repository)
         if tokens:
-            owner, repo_name = github_repository.split("/", 1)
-            if not github_token:
-                print("  [warn] GITHUB_TOKEN not set — skipping GitHub secret creation")
+            if not keyvault_name:
+                print("  [warn] --keyvault-name not set — skipping Key Vault secret storage")
             else:
-                print(f"\n  Writing team tokens as GitHub Actions secrets on {github_repository}:")
+                print(f"  Writing team tokens to Key Vault '{keyvault_name}':")
             for role, token_value in tokens.items():
                 env = role.replace("-cicd", "").upper()
-                secret_name = f"TFE_TOKEN_{env}"
-                set_repo_secret(github_token, owner, repo_name, secret_name, token_value)
-                print(f"    [ok]   Set secret '{secret_name}'")
+                secret_name = f"TFE-TOKEN-{env}"
+                if keyvault_name:
+                    set_keyvault_secret(keyvault_name, secret_name, token_value)
+                    print(f"    [ok]   Set secret '{secret_name}'")
     else:
-        print("  [skip] Skipping cicd team token creation and GitHub secret write")
+        print("  [skip] Skipping cicd team token creation and Key Vault secret storage")
 
 
     print("\nStep 3: Ensuring projects exist...")
@@ -160,6 +159,12 @@ if __name__ == "__main__":
             f"Defaults to: {DEFAULT_AGENT_POOL}"
         ),
     )
+    parser.add_argument(
+        "--keyvault-name",
+        required=False,
+        default=None,
+        help="Azure Key Vault name (e.g. 'my-keyvault'). If set, cicd team tokens are stored as secrets using DefaultAzureCredential.",
+    )
     args = parser.parse_args()
 
     org = os.getenv("TFE_ORGANIZATION")
@@ -171,14 +176,12 @@ if __name__ == "__main__":
     tfe_client = TFEClient(config)
     http_transport = get_http(config)
 
-    github_token = os.getenv("GITHUB_TOKEN")
-
     onboard(
         project_name=args.project_name,
         team_name=args.team_name,
         org=org,
         github_repository=args.github_repository,
-        github_token=github_token,
+        keyvault_name=args.keyvault_name,
         policy_sets=[p.strip() for p in args.policy_sets.split(",") if p.strip()],
         agent_pool=args.agent_pool,
         client=tfe_client,
