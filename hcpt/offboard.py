@@ -5,7 +5,7 @@ HCP Terraform Project Offboarding Script
 Steps:
   1. Check projects have no workspaces (aborts if any exist)
   2. Delete projects ({project_name}-nprd, {project_name}-prod) and their team-project access entries
-  3. Delete teams ({team_name}-reader, {team_name}-contributor, {team_name}-cicd)
+  3. Delete teams ({team_name}-reader, {team_name}-contrib, {team_name}-cicd)
 
 Environment variables:
   TFE_TOKEN         HCP Terraform API token (required)
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--team-name",
         required=True,
-        help="Team name used during onboarding (e.g. 'myapp'). Teams named '{name}-reader', '{name}-contributor', and '{name}-cicd' will be deleted.",
+        help="Team name used during onboarding (e.g. 'myapp'). Teams named '{name}-reader', '{name}-contrib', and '{name}-cicd' will be deleted.",
     )
     parser.add_argument(
         "--yes",
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         print(f"  Variable sets : {args.project_name}-nprd, {args.project_name}-prod")
         print(f"  Projects      : {args.project_name}-nprd, {args.project_name}-prod")
         print(f"  Team access   : all entries for the above projects")
-        print(f"  Teams         : {args.team_name}-nprd-*/prod-* (reader, contributor, cicd)")
+        print(f"  Teams         : {args.team_name}-nprd-*/prod-* (reader, contrib, cicd)")
         print()
         confirm = input("Continue? [y/N] ").strip()
         if confirm.lower() != "y":

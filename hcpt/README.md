@@ -6,7 +6,7 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 
 | Resource | Names created |
 |---|---|
-| Teams | `{team_name}-nprd-reader`, `{team_name}-nprd-contributor`, `{team_name}-nprd-cicd`, `{team_name}-prod-reader`, `{team_name}-prod-contributor`, `{team_name}-prod-cicd` |
+| Teams | `{team_name}-nprd-reader`, `{team_name}-nprd-contrib`, `{team_name}-nprd-cicd`, `{team_name}-prod-reader`, `{team_name}-prod-contrib`, `{team_name}-prod-cicd` |
 | Team tokens | `{team_name}-nprd-cicd`, `{team_name}-prod-cicd` (expire in 1 year, description = GitHub repository) |
 | Key Vault secrets | `TFE-TOKEN-NPRD`, `TFE-TOKEN-PROD` written to the specified Azure Key Vault |
 | Projects | `{project_name}-nprd`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
@@ -23,7 +23,7 @@ Each env-scoped team is granted access only to its matching project (`-nprd-*` t
 | Team | Access type | Permissions |
 |---|---|---|
 | `{team_name}-{env}-reader` | `read` | Read-only access to the project |
-| `{team_name}-{env}-contributor` | `custom` | Runs: `plan` only. No workspace, variable, or state access. |
+| `{team_name}-{env}-contrib` | `custom` | Runs: `plan` only. No workspace, variable, or state access. |
 | `{team_name}-{env}-cicd` | `custom` | Create workspaces: ✓ · Runs: `apply` · Variables: `read/write` · State versions: `read-outputs` |
 
 ## Prerequisites
@@ -97,10 +97,10 @@ $ python onboard.py --project-name myapp --team-name platform --github-repositor
 
 Step 1: Ensuring teams exist...
   [ok]   Created team 'platform-nprd-reader' (id=team-abc123)
-  [ok]   Created team 'platform-nprd-contributor' (id=team-def456)
+  [ok]   Created team 'platform-nprd-contrib' (id=team-def456)
   [ok]   Created team 'platform-nprd-cicd' (id=team-ghi789)
   [ok]   Created team 'platform-prod-reader' (id=team-jkl012)
-  [ok]   Created team 'platform-prod-contributor' (id=team-mno345)
+  [ok]   Created team 'platform-prod-contrib' (id=team-mno345)
   [ok]   Created team 'platform-prod-cicd' (id=team-pqr678)
 
 Step 2: Creating cicd team tokens...
@@ -114,7 +114,7 @@ Step 3: Ensuring projects exist...
 
 Step 4: Assigning team access to projects...
   [ok]   Granted 'read' access to team 'platform-reader' on project 'myapp-nprd'
-  [ok]   Granted 'custom' access to team 'platform-contributor' on project 'myapp-nprd'
+  [ok]   Granted 'custom' access to team 'platform-contrib' on project 'myapp-nprd'
   [ok]   Granted 'custom' access to team 'platform-cicd' on project 'myapp-nprd'
   ...
 
@@ -175,7 +175,7 @@ Offboarding tears down resources in this order:
 1. Check that both projects have no workspaces (aborts if any exist)
 2. Delete variable sets (`{project_name}-nprd`, `{project_name}-prod`)
 3. Remove team-project access entries and delete projects (`{project_name}-nprd`, `{project_name}-prod`)
-4. Delete teams (`{team_name}-nprd-reader/contributor/cicd`, `{team_name}-prod-reader/contributor/cicd`)
+4. Delete teams (`{team_name}-nprd-reader/contrib/cicd`, `{team_name}-prod-reader/contrib/cicd`)
 
 ```bash
 python offboard.py --project-name myapp --team-name platform

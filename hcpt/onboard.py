@@ -3,10 +3,10 @@
 HCP Terraform Project Onboarding Script
 
 Given a project name and team name, this script will:
-  1. Create six teams (if they don't exist): {team_name}-nprd-reader/contributor/cicd and {team_name}-prod-reader/contributor/cicd
+  1. Create six teams (if they don't exist): {team_name}-nprd-reader/contrib/cicd and {team_name}-prod-reader/contrib/cicd
   2. Create two projects: {project_name}-nprd, {project_name}-prod
      (with default execution mode set to 'agent' using the specified agent pool)
-  3. Grant each team access to both projects (reader=read, contributor=custom/plan-only, cicd=custom/create+apply+variables)
+  3. Grant each team access to both projects (reader=read, contrib=custom/plan-only, cicd=custom/create+apply+variables)
   4. Create a variable set for each project and assign it
   5. Attach each project to the specified policy sets
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--team-name",
         required=True,
-        help="Team name prefix (e.g. 'myapp'). Teams will be named '{name}-{env}-reader/contributor/cicd' and '{name}-prod-reader/contributor/cicd'.",
+        help="Team name prefix (e.g. 'myapp'). Teams will be named '{name}-{env}-reader/contrib/cicd' and '{name}-prod-reader/contrib/cicd'.",
     )
     parser.add_argument(
         "--policy-sets",

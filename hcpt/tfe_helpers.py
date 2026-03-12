@@ -79,10 +79,10 @@ def create_team(http: HTTPTransport, org: str, name: str) -> str:
 def ensure_teams(http: HTTPTransport, org: str, prefix: str) -> dict[str, str]:
     """
     Ensure the six onboarding teams exist (three per environment).
-    Returns {"nprd-reader": team_id, "nprd-contributor": team_id, "nprd-cicd": team_id,
-             "prod-reader": team_id, "prod-contributor": team_id, "prod-cicd": team_id}
+    Returns {"nprd-reader": team_id, "nprd-contrib": team_id, "nprd-cicd": team_id,
+             "prod-reader": team_id, "prod-contrib": team_id, "prod-cicd": team_id}
     """
-    roles = ["reader", "contributor", "cicd"]
+    roles = ["reader", "contrib", "cicd"]
     existing = list_teams(http, org)
     team_ids: dict[str, str] = {}
 
@@ -292,13 +292,13 @@ def grant_team_project_access(
 
 # Access configurations per role:
 #   reader      - read-only access to the project
-#   contributor - custom: plan-only runs, no other permissions
+#   contrib - custom: plan-only runs, no other permissions
 #   cicd        - custom: create workspaces, apply runs, read/write variables
 _ROLE_ACCESS: dict[str, dict] = {
     "reader": {
         "access": "read",
     },
-    "contributor": {
+    "contrib": {
         "access": "custom",
         "project-access": {
             "settings": "read", 
@@ -318,7 +318,11 @@ _ROLE_ACCESS: dict[str, dict] = {
     },
     "cicd": {
         "access": "custom",
-        "project-access": {"settings": "read", "teams": "none"},
+        "project-access": {
+            "settings": "read",
+            "teams": "none",
+            "variable-sets": "none"
+        },
         "workspace-access": {
             "runs": "apply",
             "sentinel-mocks": "read",
@@ -348,7 +352,7 @@ def assign_team_access(
     """
     Add env-scoped teams to their matching project with role-specific access:
       {env}-reader      -> read
-      {env}-contributor -> custom: plan-only runs
+      {env}-contrib -> custom: plan-only runs
       {env}-cicd        -> custom: create workspaces, apply runs, read/write variables
     """
     for env, project_id in project_ids.items():
@@ -391,7 +395,7 @@ def delete_teams(http: HTTPTransport, org: str, prefix: str) -> None:
     """Delete the six onboarding teams (three per environment) for a given prefix."""
     existing = list_teams(http, org)
     for env in DEFAULT_ENVIRONMENTS:
-        for role in ["reader", "contributor", "cicd"]:
+        for role in ["reader", "contrib", "cicd"]:
             team_name = f"{prefix}-{env}-{role}"
             if team_name not in existing:
                 print(f"  [skip] Team '{team_name}' not found")
