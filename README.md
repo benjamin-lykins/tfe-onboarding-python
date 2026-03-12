@@ -32,7 +32,7 @@ Each team is granted project-level access with the following custom permissions:
 - An HCP Terraform organisation
 - An API token with permission to manage teams, projects, variable sets, and policy sets
 - `make` (Windows: install via [Git for Windows](https://gitforwindows.org/), [Chocolatey](https://chocolatey.org/) `choco install make`, or [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
-- GitHub Actions token with access to the target repository's secrets (required to write/delete `TFE_TOKEN` during onboarding/offboarding)
+- GitHub Actions token with access to the target repository's secrets (required to write `TFE_TOKEN` during onboarding)
 
 ## Setup
 
@@ -65,7 +65,7 @@ TFE_ORGANIZATION=your-org-name
 # TFE_HOSTNAME=app.terraform.io
 
 # GitHub PAT or fine-grained token with "Secrets: Read and write" on the target repo.
-# Required to write/delete TFE_CICD_TOKEN on the GitHub repository during onboarding/offboarding.
+# Required to write TFE_TOKEN on the GitHub repository during onboarding.
 # Fine-grained token (recommended): Settings → Developer settings → Personal access tokens → Fine-grained tokens
 #   Permissions: Secrets → Read and write
 # Classic token: requires the repo scope
@@ -155,35 +155,28 @@ python onboard.py --project-name myapp --team-name platform \
 
 ## Offboarding
 
-Removes all resources created by `onboard.py`. Teams are **not** deleted.
+Deletes the projects and teams created by `onboard.py`.
 
 ```bash
-python offboard.py --project-name <name> --team-name <name> --github-repository <org/repo>
+python offboard.py --project-name <name> --team-name <name>
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `--project-name` | Yes | Project name prefix used during onboarding |
 | `--team-name` | Yes | Team name prefix used during onboarding |
-| `--github-repository` | Yes | GitHub repo used during onboarding — identifies the cicd token to revoke |
-| `--policy-sets` | No | Comma-separated policy set names to detach. Defaults to `DEFAULT_POLICY_SETS` in `offboard.py` |
 | `--yes` | No | Skip the confirmation prompt |
 
 Offboarding tears down resources in this order:
 1. Check that both projects have no workspaces (aborts if any exist)
-2. Revoke `{team_name}-cicd` token matching the GitHub repository description
-3. Delete the `TFE_TOKEN` Actions secret from the GitHub repository
-4. Detach projects from policy sets
-5. Delete variable sets
-6. Remove team-project access entries and delete projects
+2. Remove team-project access entries and delete projects (`{project_name}-nprod`, `{project_name}-prod`)
+3. Delete teams (`{team_name}-reader`, `{team_name}-contributor`, `{team_name}-cicd`)
 
 ```bash
-python offboard.py --project-name myapp --team-name platform \
-  --github-repository my-org/my-repo
+python offboard.py --project-name myapp --team-name platform
 
 # Skip confirmation
-python offboard.py --project-name myapp --team-name platform \
-  --github-repository my-org/my-repo --yes
+python offboard.py --project-name myapp --team-name platform --yes
 ```
 
 ## Project structure
@@ -191,7 +184,7 @@ python offboard.py --project-name myapp --team-name platform \
 ```
 .
 ├── onboard.py          # Onboarding entrypoint
-├── offboard.py         # Offboarding entrypoint (preserves teams)
+├── offboard.py         # Offboarding entrypoint
 ├── tfe_helpers.py      # Shared helper functions
 ├── examples/
 │   ├── demo.sh         # Interactive demo shell script
@@ -212,12 +205,12 @@ Both workflows are triggered manually via **Actions → Run workflow** in the Gi
 
 **Required repository secrets** (Settings → Secrets and variables → Actions):
 
-| Secret | Description |
-|---|---|
-| `TFE_TOKEN` | HCP Terraform API token |
-| `TFE_ORGANIZATION` | HCP Terraform organisation name |
-| `TFE_HOSTNAME` | Optional — defaults to `app.terraform.io` |
-| `GH_PAT` | GitHub PAT with `Secrets: Read and write` on target repositories. Used to write/delete `TFE_CICD_TOKEN` on the onboarded repository. Fine-grained token recommended. |
+| Secret | Used by | Description |
+|---|---|---|
+| `TFE_TOKEN` | both | HCP Terraform API token |
+| `TFE_ORGANIZATION` | both | HCP Terraform organisation name |
+| `TFE_HOSTNAME` | both | Optional — defaults to `app.terraform.io` |
+| `GH_PAT` | onboard only | GitHub PAT with `Secrets: Read and write` on target repositories. Used to write `TFE_TOKEN` on the onboarded repository. Fine-grained token recommended. |
 
 **Workflow inputs:**
 
@@ -225,8 +218,8 @@ Both workflows are triggered manually via **Actions → Run workflow** in the Gi
 |---|---|---|---|
 | `project_name` | required | required | Project name prefix |
 | `team_name` | required | required | Team name prefix |
-| `github_repository` | required | required | GitHub repo (e.g. `my-org/my-repo`) |
-| `policy_sets` | optional | optional | Comma-separated policy set names (blank = defaults) |
+| `github_repository` | required | — | GitHub repo (e.g. `my-org/my-repo`) |
+| `policy_sets` | optional | — | Comma-separated policy set names (blank = defaults) |
 
 The offboarding workflow passes `--yes` automatically to skip the interactive confirmation prompt.
 
