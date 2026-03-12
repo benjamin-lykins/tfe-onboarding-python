@@ -12,6 +12,8 @@ certifi==2026.2.25
     # via
     #   httpcore
     #   httpx
+cffi==2.0.0
+    # via pynacl
 h11==0.16.0
     # via httpcore
 h2==4.3.0
@@ -28,6 +30,8 @@ idna==3.11
     # via
     #   anyio
     #   httpx
+pycparser==3.0
+    # via cffi
 pydantic==2.12.5
     # via pytfe
 pydantic-core==2.41.5

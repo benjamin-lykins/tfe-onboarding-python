@@ -4,28 +4,19 @@ HCP Terraform Project Onboarding Script
 
 Given a project name and team name, this script will:
   1. Create six teams (if they don't exist): {team_name}-nprd-reader/contributor/cicd and {team_name}-prod-reader/contributor/cicd
-  2. Create team tokens for {team_name}-nprd-cicd and {team_name}-prod-cicd (description = github_repository)
-     and write them as Actions secrets TFE_TOKEN_NPRD and TFE_TOKEN_PROD on the target GitHub repository
-  3. Create two projects: {project_name}-nprod, {project_name}-prod
+  2. Create two projects: {project_name}-nprod, {project_name}-prod
      (with default execution mode set to 'agent' using the specified agent pool)
-  4. Grant each team access to both projects (reader=read, contributor=custom/plan-only, cicd=custom/create+apply+variables)
-  5. Create a variable set for each project and assign it
-  6. Attach each project to the specified policy sets
+  3. Grant each team access to both projects (reader=read, contributor=custom/plan-only, cicd=custom/create+apply+variables)
+  4. Create a variable set for each project and assign it
+  5. Attach each project to the specified policy sets
 
 Environment variables:
   TFE_TOKEN         HCP Terraform API token (required)
   TFE_ORGANIZATION  HCP Terraform organisation name (required)
   TFE_HOSTNAME      HCP Terraform hostname (optional, defaults to app.terraform.io)
-  GITHUB_TOKEN      GitHub PAT or fine-grained token with Secrets: read/write on the
-                    target repository (optional — skips GitHub secret write if unset)
-
-Optional flags:
-  --skip-token-creation   Skip creating the cicd team token and writing it to GitHub.
-                          Useful when re-onboarding a project where the token already exists
-                          or when GitHub secret management is handled separately.
 
 Usage:
-  python onboard.py --project-name <name> --team-name <name> --github-repository <org/repo>
+  python onboard.py --project-name <name> --team-name <name>
 """
 
 import argparse
@@ -38,12 +29,10 @@ from pytfe import TFEClient, TFEConfig
 from tfe_helpers import (
     assign_policy_sets,
     assign_team_access,
-    create_team_tokens,
     ensure_projects,
     ensure_teams,
     ensure_varsets,
     get_http,
-    set_keyvault_secret,
 )
 
 # Edit this list to change the default policy sets applied to every onboarded project.
@@ -51,63 +40,33 @@ DEFAULT_POLICY_SETS: list[str] = [
     "default-policy",
 ]
 
-
 # Edit this string to change the default agent pool applied to every onboarded project.
 DEFAULT_AGENT_POOL: str = "default-agent-pool"
-
-# Edit this to update the teams which will get an initial token created during onboarding.
-DEFAULT_TEAMS_WITH_TOKENS: list[str] = [
-    "cicd",
-]
-
-
 
 def onboard(
     project_name: str,
     team_name: str,
     org: str,
-    github_repository: str,
-    keyvault_name: str | None,
     policy_sets: list[str],
     agent_pool: str,
     client: TFEClient,
     http,
-    skip_token_creation: bool = False,
 ) -> None:
     print(f"\n=== Onboarding '{project_name}' into HCP Terraform org ===\n")
 
     print("Step 1: Ensuring teams exist...")
     team_ids = ensure_teams(http, org, team_name)
 
-    print("\nStep 2: Creating cicd team tokens...")
-    if not skip_token_creation:
-        cicd_team_ids = {k: v for k, v in team_ids.items() if k.endswith("-cicd")}
-        tokens = create_team_tokens(http, org, cicd_team_ids, team_name, description=github_repository)
-        if tokens:
-            if not keyvault_name:
-                print("  [warn] --keyvault-name not set — skipping Key Vault secret storage")
-            else:
-                print(f"  Writing team tokens to Key Vault '{keyvault_name}':")
-            for role, token_value in tokens.items():
-                env = role.replace("-cicd", "").upper()
-                secret_name = f"TFE-TOKEN-{env}"
-                if keyvault_name:
-                    set_keyvault_secret(keyvault_name, secret_name, token_value)
-                    print(f"    [ok]   Set secret '{secret_name}'")
-    else:
-        print("  [skip] Skipping cicd team token creation and Key Vault secret storage")
-
-
-    print("\nStep 3: Ensuring projects exist...")
+    print("\nStep 2: Ensuring projects exist...")
     project_ids = ensure_projects(http, client, org, project_name, agent_pool_name=agent_pool)
 
-    print("\nStep 4: Assigning team access to projects...")
+    print("\nStep 3: Assigning team access to projects...")
     assign_team_access(http, team_ids, project_ids, project_prefix=project_name, team_prefix=team_name)
 
-    print("\nStep 5: Creating and assigning variable sets...")
+    print("\nStep 4: Creating and assigning variable sets...")
     ensure_varsets(client, org, project_ids, project_name)
 
-    print("\nStep 6: Attaching policy sets to projects...")
+    print("\nStep 5: Attaching policy sets to projects...")
     assign_policy_sets(client, org, project_ids, policy_sets)
 
     print("\n=== Onboarding complete! ===\n")
@@ -130,18 +89,6 @@ if __name__ == "__main__":
         help="Team name prefix (e.g. 'myapp'). Teams will be named '{name}-{env}-reader/contributor/cicd' and '{name}-prod-reader/contributor/cicd'.",
     )
     parser.add_argument(
-        "--skip-token-creation",
-        required=False,
-        action="store_true",
-        help="Skip creating the cicd team token and writing it to the GitHub repository.",
-    )
-
-    parser.add_argument(
-        "--github-repository",
-        required=True,
-        help="GitHub repository (e.g. 'my-org/my-repo'). Used as the cicd team token description.",
-    )
-    parser.add_argument(
         "--policy-sets",
         required=False,
         default=",".join(DEFAULT_POLICY_SETS),
@@ -159,12 +106,6 @@ if __name__ == "__main__":
             f"Defaults to: {DEFAULT_AGENT_POOL}"
         ),
     )
-    parser.add_argument(
-        "--keyvault-name",
-        required=False,
-        default=None,
-        help="Azure Key Vault name (e.g. 'my-keyvault'). If set, cicd team tokens are stored as secrets using DefaultAzureCredential.",
-    )
     args = parser.parse_args()
 
     org = os.getenv("TFE_ORGANIZATION")
@@ -180,11 +121,8 @@ if __name__ == "__main__":
         project_name=args.project_name,
         team_name=args.team_name,
         org=org,
-        github_repository=args.github_repository,
-        keyvault_name=args.keyvault_name,
         policy_sets=[p.strip() for p in args.policy_sets.split(",") if p.strip()],
         agent_pool=args.agent_pool,
         client=tfe_client,
         http=http_transport,
-        skip_token_creation=args.skip_token_creation,
     )

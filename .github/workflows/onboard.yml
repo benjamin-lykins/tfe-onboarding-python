@@ -9,13 +9,6 @@ on:
       team_name:
         description: "Team name prefix (creates {name}-nprd-* and {name}-prod-* teams)"
         required: true
-      github_repository:
-        description: "GitHub repository (e.g. my-org/my-repo) — used as the cicd token description"
-        required: true
-      keyvault_name:
-        description: "Azure Key Vault name to store cicd team tokens (leave blank to skip)"
-        required: false
-        default: ""
       policy_sets:
         description: "Comma-separated policy set names to attach (leave blank for defaults)"
         required: false
@@ -42,17 +35,10 @@ jobs:
           TFE_TOKEN: ${{ secrets.TFE_TOKEN }}
           TFE_ORGANIZATION: ${{ secrets.TFE_ORGANIZATION }}
           TFE_HOSTNAME: ${{ secrets.TFE_HOSTNAME }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           ARGS="--project-name ${{ inputs.project_name }} \
                 --team-name ${{ inputs.team_name }} \
-                --github-repository ${{ inputs.github_repository }}"
 
-          if [ -n "${{ inputs.keyvault_name }}" ]; then
-            ARGS="$ARGS --keyvault-name ${{ inputs.keyvault_name }}"
-          fi
 
           if [ -n "${{ inputs.policy_sets }}" ]; then
             ARGS="$ARGS --policy-sets '${{ inputs.policy_sets }}'"

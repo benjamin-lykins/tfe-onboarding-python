@@ -8,8 +8,7 @@ import base64
 import datetime
 
 import httpx
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
+
 
 from pytfe.models import (
     Project,
@@ -40,12 +39,11 @@ def get_http(config: TFEConfig) -> HTTPTransport:
         ca_bundle=config.ca_bundle,
     )
 
-
-
 DEFAULT_ENVIRONMENTS: list[str] = [
     "nprd",
     "prod",
 ]
+
 
 # ---------------------------------------------------------------------------
 # Teams
@@ -107,82 +105,84 @@ def ensure_teams(http: HTTPTransport, org: str, prefix: str) -> dict[str, str]:
 # Team Tokens
 # ---------------------------------------------------------------------------
 
-def _get_org_team_tokens(http: HTTPTransport, org: str) -> list[dict]:
-    """Return all team tokens for the org from the list endpoint."""
-    response = http.request("GET", f"/api/v2/organizations/{org}/team-tokens")
-    return response.json().get("data", [])
+# This was not used, but keeping for reference. 
+
+# def _get_org_team_tokens(http: HTTPTransport, org: str) -> list[dict]:
+#     """Return all team tokens for the org from the list endpoint."""
+#     response = http.request("GET", f"/api/v2/organizations/{org}/team-tokens")
+#     return response.json().get("data", [])
 
 
-def _find_token_for_team(org_tokens: list[dict], team_id: str, description: str) -> dict | None:
-    """Return the token entry matching both team_id and description, or None."""
-    for token in org_tokens:
-        rel_team = token.get("relationships", {}).get("team", {}).get("data", {})
-        if rel_team.get("id") == team_id and token.get("attributes", {}).get("description") == description:
-            return token
-    return None
+# def _find_token_for_team(org_tokens: list[dict], team_id: str, description: str) -> dict | None:
+#     """Return the token entry matching both team_id and description, or None."""
+#     for token in org_tokens:
+#         rel_team = token.get("relationships", {}).get("team", {}).get("data", {})
+#         if rel_team.get("id") == team_id and token.get("attributes", {}).get("description") == description:
+#             return token
+#     return None
 
 
-def create_team_tokens(
-    http: HTTPTransport,
-    org: str,
-    team_ids: dict[str, str],
-    prefix: str,
-    description: str,
-) -> dict[str, str]:
-    """
-    Create a token for each team if one does not already exist.
-    Returns {role: token_value} — only includes newly created tokens since
-    existing token values are not returned by the API.
-    """
-    org_tokens = _get_org_team_tokens(http, org)
-    tokens: dict[str, str] = {}
+# def create_team_tokens(
+#     http: HTTPTransport,
+#     org: str,
+#     team_ids: dict[str, str],
+#     prefix: str,
+#     description: str,
+# ) -> dict[str, str]:
+#     """
+#     Create a token for each team if one does not already exist.
+#     Returns {role: token_value} — only includes newly created tokens since
+#     existing token values are not returned by the API.
+#     """
+#     org_tokens = _get_org_team_tokens(http, org)
+#     tokens: dict[str, str] = {}
 
-    for role, team_id in team_ids.items():
-        team_name = f"{prefix}-{role}"
-        existing = _find_token_for_team(org_tokens, team_id, description)
-        if existing:
-            print(f"  [skip] Token with description '{description}' already exists for team '{team_name}' (id={existing['id']})")
-            continue
-        expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat()
-        payload = {
-            "data": {
-                "type": "authentication-tokens",
-                "attributes": {
-                    "description": description,
-                    "expired-at": expires_at,
-                },
-            }
-        }
-        response = http.request(
-            "POST",
-            f"/api/v2/teams/{team_id}/authentication-tokens",
-            json_body=payload,
-        )
-        token_value = response.json()["data"]["attributes"]["token"]
-        tokens[role] = token_value
-        print(f"  [ok]   Created token for team '{team_name}' (description: {description})")
+#     for role, team_id in team_ids.items():
+#         team_name = f"{prefix}-{role}"
+#         existing = _find_token_for_team(org_tokens, team_id, description)
+#         if existing:
+#             print(f"  [skip] Token with description '{description}' already exists for team '{team_name}' (id={existing['id']})")
+#             continue
+#         expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat()
+#         payload = {
+#             "data": {
+#                 "type": "authentication-tokens",
+#                 "attributes": {
+#                     "description": description,
+#                     "expired-at": expires_at,
+#                 },
+#             }
+#         }
+#         response = http.request(
+#             "POST",
+#             f"/api/v2/teams/{team_id}/authentication-tokens",
+#             json_body=payload,
+#         )
+#         token_value = response.json()["data"]["attributes"]["token"]
+#         tokens[role] = token_value
+#         print(f"  [ok]   Created token for team '{team_name}' (description: {description})")
 
-    return tokens
+#     return tokens
 
 
-def delete_team_tokens(
-    http: HTTPTransport,
-    org: str,
-    team_ids: dict[str, str],
-    prefix: str,
-    description: str,
-) -> None:
-    """Delete the token matching description for each team using the token ID from the list endpoint."""
-    org_tokens = _get_org_team_tokens(http, org)
+# def delete_team_tokens(
+#     http: HTTPTransport,
+#     org: str,
+#     team_ids: dict[str, str],
+#     prefix: str,
+#     description: str,
+# ) -> None:
+#     """Delete the token matching description for each team using the token ID from the list endpoint."""
+#     org_tokens = _get_org_team_tokens(http, org)
 
-    for role, team_id in team_ids.items():
-        team_name = f"{prefix}-{role}"
-        existing = _find_token_for_team(org_tokens, team_id, description)
-        if not existing:
-            print(f"  [skip] No token with description '{description}' found for team '{team_name}'")
-            continue
-        http.request("DELETE", f"/api/v2/authentication-tokens/{existing['id']}")
-        print(f"  [ok]   Revoked token with description '{description}' for team '{team_name}'")
+#     for role, team_id in team_ids.items():
+#         team_name = f"{prefix}-{role}"
+#         existing = _find_token_for_team(org_tokens, team_id, description)
+#         if not existing:
+#             print(f"  [skip] No token with description '{description}' found for team '{team_name}'")
+#             continue
+#         http.request("DELETE", f"/api/v2/authentication-tokens/{existing['id']}")
+#         print(f"  [ok]   Revoked token with description '{description}' for team '{team_name}'")
 
 
 # ---------------------------------------------------------------------------
@@ -525,71 +525,75 @@ def _resolve_agent_pool_id(http: HTTPTransport, org: str, name: str) -> str | No
 # Azure Key Vault
 # ---------------------------------------------------------------------------
 
-def set_keyvault_secret(vault_name: str, secret_name: str, secret_value: str) -> None:
-    """Create or update a secret in Azure Key Vault using DefaultAzureCredential."""
-    vault_url = f"https://{vault_name}.vault.azure.net"
-    client = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
-    client.set_secret(secret_name, secret_value)
+# This was not used, but leaving for reference. 
+
+# def set_keyvault_secret(vault_name: str, secret_name: str, secret_value: str) -> None:
+#     """Create or update a secret in Azure Key Vault using DefaultAzureCredential."""
+#     vault_url = f"https://{vault_name}.vault.azure.net"
+#     client = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
+#     client.set_secret(secret_name, secret_value)
 
 
 # ---------------------------------------------------------------------------
 # GitHub Secrets
 # ---------------------------------------------------------------------------
 
-def _github_request(method: str, path: str, token: str, **kwargs) -> httpx.Response:
-    """Make a GitHub API request and raise on HTTP errors."""
-    response = httpx.request(
-        method,
-        f"https://api.github.com{path}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-        **kwargs,
-    )
-    response.raise_for_status()
-    return response
+# This was not used, but leaving for reference
+
+# def _github_request(method: str, path: str, token: str, **kwargs) -> httpx.Response:
+#     """Make a GitHub API request and raise on HTTP errors."""
+#     response = httpx.request(
+#         method,
+#         f"https://api.github.com{path}",
+#         headers={
+#             "Accept": "application/vnd.github+json",
+#             "Authorization": f"Bearer {token}",
+#             "X-GitHub-Api-Version": "2022-11-28",
+#         },
+#         **kwargs,
+#     )
+#     response.raise_for_status()
+#     return response
 
 
-def _encrypt_secret(public_key_b64: str, secret_value: str) -> str:
-    """Encrypt a secret value with the repository's NaCl public key."""
-    from nacl import encoding, public as nacl_public
-    pk = nacl_public.PublicKey(public_key_b64.encode("utf-8"), encoding.Base64Encoder())
-    box = nacl_public.SealedBox(pk)
-    encrypted = box.encrypt(secret_value.encode("utf-8"))
-    return base64.b64encode(encrypted).decode("utf-8")
+# def _encrypt_secret(public_key_b64: str, secret_value: str) -> str:
+#     """Encrypt a secret value with the repository's NaCl public key."""
+#     from nacl import encoding, public as nacl_public
+#     pk = nacl_public.PublicKey(public_key_b64.encode("utf-8"), encoding.Base64Encoder())
+#     box = nacl_public.SealedBox(pk)
+#     encrypted = box.encrypt(secret_value.encode("utf-8"))
+#     return base64.b64encode(encrypted).decode("utf-8")
 
 
-def set_repo_secret(github_token: str, owner: str, repo: str, secret_name: str, secret_value: str) -> None:
-    """Create or update a GitHub Actions secret on the target repository."""
-    try:
-        key_resp = _github_request("GET", f"/repos/{owner}/{repo}/actions/secrets/public-key", github_token)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            raise RuntimeError(
-                f"Could not access '{owner}/{repo}' via the GitHub API (404). "
-                "Check that: (1) the repository exists, (2) the token has 'repo' scope, "
-                "and (3) GitHub Actions is enabled on the repository "
-                "(Settings → Actions → General → Allow all actions)."
-            ) from None
-        raise
-    key_data = key_resp.json()
-    encrypted_value = _encrypt_secret(key_data["key"], secret_value)
-    _github_request(
-        "PUT",
-        f"/repos/{owner}/{repo}/actions/secrets/{secret_name}",
-        github_token,
-        json={"encrypted_value": encrypted_value, "key_id": key_data["key_id"]},
-    )
+# def set_repo_secret(github_token: str, owner: str, repo: str, secret_name: str, secret_value: str) -> None:
+#     """Create or update a GitHub Actions secret on the target repository."""
+#     try:
+#         key_resp = _github_request("GET", f"/repos/{owner}/{repo}/actions/secrets/public-key", github_token)
+#     except httpx.HTTPStatusError as e:
+#         if e.response.status_code == 404:
+#             raise RuntimeError(
+#                 f"Could not access '{owner}/{repo}' via the GitHub API (404). "
+#                 "Check that: (1) the repository exists, (2) the token has 'repo' scope, "
+#                 "and (3) GitHub Actions is enabled on the repository "
+#                 "(Settings → Actions → General → Allow all actions)."
+#             ) from None
+#         raise
+#     key_data = key_resp.json()
+#     encrypted_value = _encrypt_secret(key_data["key"], secret_value)
+#     _github_request(
+#         "PUT",
+#         f"/repos/{owner}/{repo}/actions/secrets/{secret_name}",
+#         github_token,
+#         json={"encrypted_value": encrypted_value, "key_id": key_data["key_id"]},
+#     )
 
 
-def delete_repo_secret(github_token: str, owner: str, repo: str, secret_name: str) -> None:
-    """Delete a GitHub Actions secret from the target repository (no-op if not found)."""
-    try:
-        _github_request("DELETE", f"/repos/{owner}/{repo}/actions/secrets/{secret_name}", github_token)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            return
-        raise
+# def delete_repo_secret(github_token: str, owner: str, repo: str, secret_name: str) -> None:
+#     """Delete a GitHub Actions secret from the target repository (no-op if not found)."""
+#     try:
+#         _github_request("DELETE", f"/repos/{owner}/{repo}/actions/secrets/{secret_name}", github_token)
+#     except httpx.HTTPStatusError as e:
+#         if e.response.status_code == 404:
+#             return
+#         raise
 
