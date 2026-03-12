@@ -26,6 +26,7 @@ from pytfe import TFEClient, TFEConfig
 from tfe_helpers import (
     delete_projects,
     delete_teams,
+    delete_varsets,
     get_http,
     list_project_workspaces,
     list_projects,
@@ -64,10 +65,13 @@ def offboard(
 
     print("  [ok]   No workspaces found — safe to proceed")
 
-    print("\nStep 2: Deleting projects...")
+    print("\nStep 2: Deleting variable sets...")
+    delete_varsets(client, org, project_name)
+
+    print("\nStep 3: Deleting projects...")
     delete_projects(http, client, org, project_name)
 
-    print("\nStep 3: Deleting teams...")
+    print("\nStep 4: Deleting teams...")
     delete_teams(http, org, team_name)
 
     print(f"\n=== Offboarding complete! ===\n")
@@ -103,9 +107,10 @@ if __name__ == "__main__":
 
     if not args.yes:
         print(f"\nThis will delete the following resources in org '{org}':")
-        print(f"  Projects    : {args.project_name}-nprod, {args.project_name}-prod")
-        print(f"  Team access : all entries for the above projects")
-        print(f"  Teams       : {args.team_name}-reader, {args.team_name}-contributor, {args.team_name}-cicd")
+        print(f"  Variable sets : {args.project_name}-nprod, {args.project_name}-prod")
+        print(f"  Projects      : {args.project_name}-nprod, {args.project_name}-prod")
+        print(f"  Team access   : all entries for the above projects")
+        print(f"  Teams         : {args.team_name}-nprd-*/prod-* (reader, contributor, cicd)")
         print()
         confirm = input("Continue? [y/N] ").strip()
         if confirm.lower() != "y":

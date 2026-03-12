@@ -169,8 +169,9 @@ python offboard.py --project-name <name> --team-name <name>
 
 Offboarding tears down resources in this order:
 1. Check that both projects have no workspaces (aborts if any exist)
-2. Remove team-project access entries and delete projects (`{project_name}-nprod`, `{project_name}-prod`)
-3. Delete teams (`{team_name}-nprd-reader/contributor/cicd`, `{team_name}-prod-reader/contributor/cicd`)
+2. Delete variable sets (`{project_name}-nprod`, `{project_name}-prod`)
+3. Remove team-project access entries and delete projects (`{project_name}-nprod`, `{project_name}-prod`)
+4. Delete teams (`{team_name}-nprd-reader/contributor/cicd`, `{team_name}-prod-reader/contributor/cicd`)
 
 ```bash
 python offboard.py --project-name myapp --team-name platform
