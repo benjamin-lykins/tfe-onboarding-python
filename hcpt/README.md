@@ -7,14 +7,12 @@ Python scripts for onboarding and offboarding projects in HCP Terraform. Given a
 | Resource | Names created |
 |---|---|
 | Teams | `{team_name}-nprd-reader`, `{team_name}-nprd-contrib`, `{team_name}-nprd-cicd`, `{team_name}-prod-reader`, `{team_name}-prod-contrib`, `{team_name}-prod-cicd` |
-| Team tokens | `{team_name}-nprd-cicd`, `{team_name}-prod-cicd` (expire in 1 year, description = GitHub repository) |
-| Key Vault secrets | `TFE-TOKEN-NPRD`, `TFE-TOKEN-PROD` written to the specified Azure Key Vault |
 | Projects | `{project_name}-nprd`, `{project_name}-prod` (execution mode: `agent`, default agent pool set) |
 | Team access (per project) | see [Team access](#team-access) below |
 | Variable sets | `{project_name}-nprd`, `{project_name}-prod` (assigned to their project) |
 | Policy sets | Projects attached to each policy set in `--policy-sets` |
 
-All teams are created with organisation-level read-only access (`read-workspaces`, `read-projects`). The script is fully idempotent — re-running it skips resources that already exist.
+All teams are created with no organisation-level access — permissions are managed at the project level. The script is fully idempotent — re-running it skips resources that already exist.
 
 ### Team access
 
@@ -23,8 +21,8 @@ Each env-scoped team is granted access only to its matching project (`-nprd-*` t
 | Team | Access type | Permissions |
 |---|---|---|
 | `{team_name}-{env}-reader` | `read` | Read-only access to the project |
-| `{team_name}-{env}-contrib` | `custom` | Runs: `plan` only. No workspace, variable, or state access. |
-| `{team_name}-{env}-cicd` | `custom` | Create workspaces: ✓ · Runs: `apply` · Variables: `read/write` · State versions: `read-outputs` |
+| `{team_name}-{env}-contrib` | `custom` | Runs: `plan` only. Variables: `read`. No workspace, state, or variable-set management. |
+| `{team_name}-{env}-cicd` | `custom` | Create workspaces: ✓ · Runs: `apply` · Sentinel mocks: `read` · Variables: `read/write` · State versions: `read-outputs` |
 
 ## Prerequisites
 
@@ -32,7 +30,6 @@ Each env-scoped team is granted access only to its matching project (`-nprd-*` t
 - An HCP Terraform organisation
 - An API token with permission to manage teams, projects, variable sets, and policy sets
 - `make` (Windows: install via [Git for Windows](https://gitforwindows.org/), [Chocolatey](https://chocolatey.org/) `choco install make`, or [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
-- Azure identity with `Key Vault Secrets Officer` (or `Key Vault Administrator`) role on the target Key Vault (required to write team tokens during onboarding)
 
 ## Setup
 
@@ -63,35 +60,25 @@ TFE_ORGANIZATION=your-org-name
 
 # Optional — defaults to app.terraform.io
 # TFE_HOSTNAME=app.terraform.io
-
-# Azure credentials for Key Vault secret storage (used by DefaultAzureCredential).
-# When running locally, `az login` is sufficient — no env vars needed.
-# For CI/CD, set these for a service principal:
-# AZURE_TENANT_ID=your-tenant-id
-# AZURE_CLIENT_ID=your-client-id
-# AZURE_CLIENT_SECRET=your-client-secret
 ```
 
 ## Onboarding
 
 ```bash
-python onboard.py --project-name <name> --team-name <name> --github-repository <org/repo>
+python onboard.py --project-name <name> --team-name <name>
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `--project-name` | Yes | Prefix for projects (`{name}-nprd`, `{name}-prod`) and variable sets |
 | `--team-name` | Yes | Prefix for teams (`{name}-nprd-*`, `{name}-prod-*`) |
-| `--github-repository` | Yes | GitHub repo (e.g. `my-org/my-repo`). Used as the cicd team token description |
-| `--keyvault-name` | No | Azure Key Vault name. If set, cicd tokens are stored as `TFE-TOKEN-NPRD` / `TFE-TOKEN-PROD` using `DefaultAzureCredential` |
 | `--policy-sets` | No | Comma-separated policy set names to attach. Defaults to `DEFAULT_POLICY_SETS` in `onboard.py` |
 | `--agent-pool` | No | Agent pool name to set as the default for new projects (execution mode: `agent`). Defaults to `DEFAULT_AGENT_POOL` in `onboard.py` |
-| `--skip-token-creation` | No | Skip creating the cicd team tokens and Key Vault secret storage |
 
 **Example**
 
 ```
-$ python onboard.py --project-name myapp --team-name platform --github-repository my-org/my-repo --keyvault-name my-keyvault
+$ python onboard.py --project-name myapp --team-name platform
 
 === Onboarding 'myapp' into HCP Terraform org 'my-org' ===
 
@@ -103,39 +90,27 @@ Step 1: Ensuring teams exist...
   [ok]   Created team 'platform-prod-contrib' (id=team-mno345)
   [ok]   Created team 'platform-prod-cicd' (id=team-pqr678)
 
-Step 2: Creating cicd team tokens...
-  Writing team tokens to Key Vault 'my-keyvault':
-    [ok]   Set secret 'TFE-TOKEN-NPRD'
-    [ok]   Set secret 'TFE-TOKEN-PROD'
-
-Step 3: Ensuring projects exist...
+Step 2: Ensuring projects exist...
   [ok]   Created project 'myapp-nprd' (id=prj-abc123)
   [ok]   Created project 'myapp-prod' (id=prj-def456)
 
-Step 4: Assigning team access to projects...
-  [ok]   Granted 'read' access to team 'platform-reader' on project 'myapp-nprd'
-  [ok]   Granted 'custom' access to team 'platform-contrib' on project 'myapp-nprd'
-  [ok]   Granted 'custom' access to team 'platform-cicd' on project 'myapp-nprd'
+Step 3: Assigning team access to projects...
+  [ok]   Granted 'read' access to team 'platform-nprd-reader' on project 'myapp-nprd'
+  [ok]   Granted 'custom' access to team 'platform-nprd-contrib' on project 'myapp-nprd'
+  [ok]   Granted 'custom' access to team 'platform-nprd-cicd' on project 'myapp-nprd'
+  [ok]   Granted 'read' access to team 'platform-prod-reader' on project 'myapp-prod'
   ...
 
-Step 5: Creating and assigning variable sets...
+Step 4: Creating and assigning variable sets...
   [ok]   Created variable set 'myapp-nprd' (id=varset-abc123)
   [ok]   Assigned variable set 'myapp-nprd' to project 'myapp-nprd'
-  ...
+  [ok]   Created variable set 'myapp-prod' (id=varset-def456)
+  [ok]   Assigned variable set 'myapp-prod' to project 'myapp-prod'
 
-Step 6: Attaching policy sets to projects...
+Step 5: Attaching policy sets to projects...
   [ok]   Attached policy set 'default-policy' to projects 'nprd', 'prod'
 
 === Onboarding complete! ===
-```
-
-Use `--skip-token-creation` to skip Step 2 entirely — useful when re-running onboarding on an existing project where the tokens were already created:
-
-```bash
-python onboard.py --project-name myapp --team-name platform \
-  --github-repository my-org/my-repo \
-  --keyvault-name my-keyvault \
-  --skip-token-creation
 ```
 
 ### Default policy sets
@@ -153,13 +128,12 @@ Override at runtime with `--policy-sets`:
 
 ```bash
 python onboard.py --project-name myapp --team-name platform \
-  --github-repository my-org/my-repo \
   --policy-sets "default-policy,compliance-policy"
 ```
 
 ## Offboarding
 
-Deletes the projects and teams created by `onboard.py`.
+Deletes the variable sets, projects, and teams created by `onboard.py`.
 
 ```bash
 python offboard.py --project-name <name> --team-name <name>
@@ -187,13 +161,10 @@ python offboard.py --project-name myapp --team-name platform --yes
 ## Project structure
 
 ```
-.
+hcpt/
 ├── onboard.py          # Onboarding entrypoint
 ├── offboard.py         # Offboarding entrypoint
 ├── tfe_helpers.py      # Shared helper functions
-├── examples/
-│   ├── demo.sh         # Interactive demo shell script
-│   └── cleanup.py      # Full teardown including teams
 ├── .github/
 │   └── workflows/
 │       ├── onboard.yml     # GitHub Actions workflow for onboarding
@@ -215,9 +186,6 @@ Both workflows are triggered manually via **Actions → Run workflow** in the Gi
 | `TFE_TOKEN` | both | HCP Terraform API token |
 | `TFE_ORGANIZATION` | both | HCP Terraform organisation name |
 | `TFE_HOSTNAME` | both | Optional — defaults to `app.terraform.io` |
-| `AZURE_TENANT_ID` | onboard only | Azure tenant ID for service principal auth (not needed with managed identity) |
-| `AZURE_CLIENT_ID` | onboard only | Azure client ID for service principal auth |
-| `AZURE_CLIENT_SECRET` | onboard only | Azure client secret for service principal auth |
 
 **Workflow inputs:**
 
@@ -225,7 +193,6 @@ Both workflows are triggered manually via **Actions → Run workflow** in the Gi
 |---|---|---|---|
 | `project_name` | required | required | Project name prefix |
 | `team_name` | required | required | Team name prefix |
-| `github_repository` | required | — | GitHub repo (e.g. `my-org/my-repo`) |
 | `policy_sets` | optional | — | Comma-separated policy set names (blank = defaults) |
 
 The offboarding workflow passes `--yes` automatically to skip the interactive confirmation prompt.
@@ -245,7 +212,6 @@ curl -X POST \
     "inputs": {
       "project_name": "myapp",
       "team_name": "platform",
-      "github_repository": "my-org/my-repo",
       "policy_sets": ""
     }
   }'
@@ -264,10 +230,11 @@ Replace `<owner>/<repo>` with the repository hosting these workflows. A `204 No 
 
 - [pytfe](https://pypi.org/project/pytfe/) — official HCP Terraform Python client
 - [python-dotenv](https://pypi.org/project/python-dotenv/) — `.env` file support
-- [pynacl](https://pypi.org/project/PyNaCl/) — NaCl encryption required by the GitHub Secrets API
-- [azure-identity](https://pypi.org/project/azure-identity/) — `DefaultAzureCredential` for Key Vault authentication
-- [azure-keyvault-secrets](https://pypi.org/project/azure-keyvault-secrets/) — Azure Key Vault secret management
 
 Teams, team tokens, and team-project access use the [HCP Terraform REST API](https://developer.hashicorp.com/terraform/cloud-docs/api-docs) directly, as these endpoints are not yet covered by `pytfe`.
 
-Team tokens are stored in Azure Key Vault using `DefaultAzureCredential`, which supports `az login` locally and environment variables or managed identity in CI/CD.
+## Future Proofing
+
+The scripts have additional flexibility if additional environments are added to the `DEFAULT_ENVIRONMENTS` list in `tfe_helpers.py`. This allows for easy expansion beyond the current `nprd` and `prod` environments without requiring significant changes to the onboarding and offboarding workflows.
+
+This does require mapping between projects and teams who should have access to those projects. For example: if `DEFAULT_ENVIRONMENTS` is updated to include a new environment `"stage"`, then `_PROJECT_TO_TEAM_ENV` in `tfe_helpers.py` would also need a `"stage": "stage"` entry to ensure the correct teams are associated with the new project.

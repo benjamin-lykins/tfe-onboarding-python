@@ -6,7 +6,8 @@ Given a project name and team name, this script will:
   1. Create six teams (if they don't exist): {team_name}-nprd-reader/contrib/cicd and {team_name}-prod-reader/contrib/cicd
   2. Create two projects: {project_name}-nprd, {project_name}-prod
      (with default execution mode set to 'agent' using the specified agent pool)
-  3. Grant each team access to both projects (reader=read, contrib=custom/plan-only, cicd=custom/create+apply+variables)
+  3. Grant each env-scoped team access to its matching project
+     (nprd teams → {project_name}-nprd, prod teams → {project_name}-prod)
   4. Create a variable set for each project and assign it
   5. Attach each project to the specified policy sets
 

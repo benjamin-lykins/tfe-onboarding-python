@@ -339,7 +339,10 @@ _ROLE_ACCESS: dict[str, dict] = {
 
 
 # Maps project env key → team env key
-_PROJECT_TO_TEAM_ENV: dict[str, str] = {"nprd": "nprd", "prod": "prod"}
+_PROJECT_TO_TEAM_ENV: dict[str, str] = {
+    "nprd": "nprd", 
+    "prod": "prod",
+    }
 
 
 def assign_team_access(

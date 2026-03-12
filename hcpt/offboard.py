@@ -4,8 +4,9 @@ HCP Terraform Project Offboarding Script
 
 Steps:
   1. Check projects have no workspaces (aborts if any exist)
-  2. Delete projects ({project_name}-nprd, {project_name}-prod) and their team-project access entries
-  3. Delete teams ({team_name}-reader, {team_name}-contrib, {team_name}-cicd)
+  2. Delete variable sets ({project_name}-nprd, {project_name}-prod)
+  3. Remove team-project access entries and delete projects ({project_name}-nprd, {project_name}-prod)
+  4. Delete teams ({team_name}-nprd-reader/contrib/cicd, {team_name}-prod-reader/contrib/cicd)
 
 Environment variables:
   TFE_TOKEN         HCP Terraform API token (required)
