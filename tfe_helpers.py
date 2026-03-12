@@ -362,18 +362,6 @@ def assign_team_access(
 # Projects (delete)
 # ---------------------------------------------------------------------------
 
-def delete_team_project_access(http: HTTPTransport, project_id: str) -> None:
-    """Remove all team-project access entries for a project."""
-    response = http.request(
-        "GET",
-        "/api/v2/team-projects",
-        params={"filter[project][id]": project_id},
-    )
-    for entry in response.json().get("data", []):
-        http.request("DELETE", f"/api/v2/team-projects/{entry['id']}")
-        print(f"  [ok]   Removed team access entry {entry['id']}")
-
-
 def delete_projects(http: HTTPTransport, client: TFEClient, org: str, prefix: str) -> None:
     """Remove team access then delete nprod and prod projects."""
     existing = list_projects(client, org)
@@ -383,9 +371,21 @@ def delete_projects(http: HTTPTransport, client: TFEClient, org: str, prefix: st
             print(f"  [skip] Project '{project_name}' not found")
             continue
         project_id = existing[project_name]
-        delete_team_project_access(http, project_id)
         client.projects.delete(project_id)
         print(f"  [ok]   Deleted project '{project_name}'")
+
+
+def delete_teams(http: HTTPTransport, org: str, prefix: str) -> None:
+    """Delete the three onboarding teams for a given prefix."""
+    existing = list_teams(http, org)
+    for role in ["reader", "contributor", "cicd"]:
+        team_name = f"{prefix}-{role}"
+        if team_name not in existing:
+            print(f"  [skip] Team '{team_name}' not found")
+            continue
+        team_id = existing[team_name]
+        http.request("DELETE", f"/api/v2/teams/{team_id}")
+        print(f"  [ok]   Deleted team '{team_name}'")
 
 
 # ---------------------------------------------------------------------------
